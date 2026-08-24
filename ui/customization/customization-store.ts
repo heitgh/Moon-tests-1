@@ -1,0 +1,199 @@
+import {
+  CUSTOMIZATION_LAST_VALID_KEY,
+  CUSTOMIZATION_STORAGE_KEY,
+  clone,
+  createDefaultCustomization,
+  migrateLegacyCustomization,
+  parseCustomizationImport,
+  resolveCustomization,
+  serializeCustomization,
+  setResolved,
+  validateCustomization,
+  type CustomizationConfig,
+  type CustomizationSchemaV2,
+  type SavedCustomizationTheme,
+  type SettingsScope
+} from "./customization-schema.js";
+
+export interface CustomizationChange {
+  readonly document: CustomizationSchemaV2;
+  readonly config: CustomizationConfig;
+  readonly workspaceId?: string;
+  readonly reason: "boot" | "update" | "undo" | "redo" | "cancel" | "import" | "reset" | "scope" | "theme";
+}
+
+export interface CustomizationLoadResult { readonly recovered: boolean; readonly message?: string; }
+type Listener = (change: CustomizationChange) => void;
+
+export class CustomizationStore {
+  readonly #listeners = new Set<Listener>();
+  readonly #undo: CustomizationSchemaV2[] = [];
+  readonly #redo: CustomizationSchemaV2[] = [];
+  #document: CustomizationSchemaV2;
+  #workspaceId: string | undefined;
+  #previewSnapshot: CustomizationSchemaV2 | undefined;
+  #lastError: string | undefined;
+
+  private constructor(readonly storage: Storage, document: CustomizationSchemaV2, result: CustomizationLoadResult) {
+    this.#document = document;
+    this.loadResult = result;
+  }
+
+  readonly loadResult: CustomizationLoadResult;
+
+  static load(storage: Storage = localStorage): CustomizationStore {
+    const raw = storage.getItem(CUSTOMIZATION_STORAGE_KEY);
+    if (!raw) {
+      const migrated = migrateLegacyCustomization(storage);
+      persist(storage, migrated);
+      return new CustomizationStore(storage, migrated, { recovered: false, message: "Preferências anteriores migradas para V2." });
+    }
+    try {
+      const document = validateCustomization(JSON.parse(raw));
+      storage.setItem(CUSTOMIZATION_LAST_VALID_KEY, JSON.stringify(document));
+      return new CustomizationStore(storage, document, { recovered: false });
+    } catch (error) {
+      const backup = storage.getItem(CUSTOMIZATION_LAST_VALID_KEY);
+      if (backup) {
+        try {
+          const recovered = validateCustomization(JSON.parse(backup));
+          persist(storage, recovered);
+          return new CustomizationStore(storage, recovered, { recovered: true, message: "Configuração corrompida: o último estado válido foi restaurado." });
+        } catch { /* fall through to defaults */ }
+      }
+      const defaults = createDefaultCustomization();
+      persist(storage, defaults);
+      const detail = error instanceof Error ? error.message : String(error);
+      return new CustomizationStore(storage, defaults, { recovered: true, message: `Configuração inválida (${detail}). Os padrões seguros foram restaurados.` });
+    }
+  }
+
+  get document(): CustomizationSchemaV2 { return clone(this.#document); }
+  get config(): CustomizationConfig { return clone(resolveCustomization(this.#document, this.#workspaceId)); }
+  get workspaceId(): string | undefined { return this.#workspaceId; }
+  get canUndo(): boolean { return this.#undo.length > 0; }
+  get canRedo(): boolean { return this.#redo.length > 0; }
+  get lastError(): string | undefined { return this.#lastError; }
+  get previewing(): boolean { return this.#previewSnapshot !== undefined; }
+
+  subscribe(listener: Listener): () => void {
+    this.#listeners.add(listener);
+    listener({ document: this.document, config: this.config, workspaceId: this.#workspaceId, reason: "boot" });
+    return () => this.#listeners.delete(listener);
+  }
+
+  setWorkspace(workspaceId: string): void {
+    this.#workspaceId = workspaceId;
+    this.#emit("scope");
+  }
+
+  setScope(scope: SettingsScope): void {
+    if (scope === this.#document.scope) return;
+    this.#mutate(document => { (document as { scope: SettingsScope }).scope = scope; if (scope === "workspace" && this.#workspaceId && !document.workspaces[this.#workspaceId]) (document.workspaces as Record<string, CustomizationConfig>)[this.#workspaceId] = clone(document.global); }, "scope");
+  }
+
+  update(mutator: (config: CustomizationConfig) => void): boolean {
+    return this.#mutate(document => { const next = clone(resolveCustomization(document, this.#workspaceId)); mutator(next); setResolved(document, this.#workspaceId, next); }, "update");
+  }
+
+  beginPreview(): void {
+    if (!this.#previewSnapshot) this.#previewSnapshot = this.document;
+  }
+
+  applyPreview(): void {
+    this.#previewSnapshot = undefined;
+    this.#undo.length = 0;
+    this.#redo.length = 0;
+  }
+
+  cancelPreview(): void {
+    if (!this.#previewSnapshot) return;
+    this.#document = this.#previewSnapshot;
+    this.#previewSnapshot = undefined;
+    this.#undo.length = 0;
+    this.#redo.length = 0;
+    this.#save();
+    this.#emit("cancel");
+  }
+
+  undo(): boolean {
+    const previous = this.#undo.pop(); if (!previous) return false;
+    this.#redo.push(this.document); this.#document = previous; this.#save(); this.#emit("undo"); return true;
+  }
+
+  redo(): boolean {
+    const next = this.#redo.pop(); if (!next) return false;
+    this.#undo.push(this.document); this.#document = next; this.#save(); this.#emit("redo"); return true;
+  }
+
+  resetSection(section: keyof CustomizationConfig): void {
+    const defaults = createDefaultCustomization().global;
+    this.update(config => { (config as unknown as Record<string, unknown>)[section] = clone(defaults[section]); });
+    this.#emit("reset");
+  }
+
+  resetAll(scope: "current" | "everything" = "current"): void {
+    if (scope === "everything") {
+      const next = createDefaultCustomization();
+      this.#replace(next, "reset");
+      return;
+    }
+    this.#mutate(document => setResolved(document, this.#workspaceId, clone(createDefaultCustomization().global)), "reset");
+  }
+
+  saveTheme(name: string): SavedCustomizationTheme {
+    const cleanName = name.trim(); if (!cleanName || cleanName.length > 100) throw new Error("Dê ao tema um nome de até 100 caracteres.");
+    const theme: SavedCustomizationTheme = { id: crypto.randomUUID(), name: cleanName, createdAt: Date.now(), config: this.config };
+    this.#mutate(document => { (document.themes as SavedCustomizationTheme[]).push(theme); }, "theme");
+    return theme;
+  }
+
+  duplicateTheme(id: string): SavedCustomizationTheme {
+    const source = this.#document.themes.find(theme => theme.id === id); if (!source) throw new Error("Tema não encontrado.");
+    const copy = { ...clone(source), id: crypto.randomUUID(), name: `${source.name} — cópia`, createdAt: Date.now() };
+    this.#mutate(document => { (document.themes as SavedCustomizationTheme[]).push(copy); }, "theme"); return copy;
+  }
+
+  renameTheme(id: string, name: string): void {
+    const cleanName = name.trim(); if (!cleanName || cleanName.length > 100) throw new Error("Nome de tema inválido.");
+    this.#mutate(document => { const index = document.themes.findIndex(theme => theme.id === id); if (index < 0) throw new Error("Tema não encontrado."); (document.themes as SavedCustomizationTheme[])[index] = { ...document.themes[index]!, name: cleanName }; }, "theme");
+  }
+
+  deleteTheme(id: string): void {
+    this.#mutate(document => { (document as { themes: readonly SavedCustomizationTheme[] }).themes = document.themes.filter(theme => theme.id !== id); }, "theme");
+  }
+
+  applyTheme(id: string): void {
+    const theme = this.#document.themes.find(candidate => candidate.id === id); if (!theme) throw new Error("Tema não encontrado.");
+    this.#mutate(document => setResolved(document, this.#workspaceId, clone(theme.config)), "theme");
+  }
+
+  export(scope: "all" | "appearance" | "workspace" = "all"): string { return serializeCustomization(this.#document, scope, this.#workspaceId); }
+
+  import(content: string): void {
+    const next = parseCustomizationImport(content, this.#document, this.#workspaceId);
+    this.#replace(next, "import");
+  }
+
+  #mutate(mutator: (document: CustomizationSchemaV2) => void, reason: CustomizationChange["reason"]): boolean {
+    const previous = this.document; const candidate = this.document;
+    try {
+      mutator(candidate);
+      const validated = validateCustomization({ ...candidate, revision: candidate.revision + 1, updatedAt: Date.now() });
+      this.#undo.push(previous); if (this.#undo.length > 80) this.#undo.shift(); this.#redo.length = 0; this.#document = validated; this.#lastError = undefined; this.#save(); this.#emit(reason); return true;
+    } catch (error) { this.#lastError = error instanceof Error ? error.message : String(error); return false; }
+  }
+
+  #replace(next: CustomizationSchemaV2, reason: CustomizationChange["reason"]): void {
+    this.#undo.push(this.document); this.#redo.length = 0; this.#document = validateCustomization(next); this.#lastError = undefined; this.#save(); this.#emit(reason);
+  }
+
+  #save(): void { persist(this.storage, this.#document); }
+  #emit(reason: CustomizationChange["reason"]): void { const change: CustomizationChange = { document: this.document, config: this.config, workspaceId: this.#workspaceId, reason }; this.#listeners.forEach(listener => listener(change)); }
+}
+
+function persist(storage: Storage, document: CustomizationSchemaV2): void {
+  const serialized = JSON.stringify(document);
+  storage.setItem(CUSTOMIZATION_STORAGE_KEY, serialized);
+  storage.setItem(CUSTOMIZATION_LAST_VALID_KEY, serialized);
+}
