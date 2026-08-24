@@ -131,7 +131,9 @@
     "ui/**/*.ts",
     "tests/**/*.ts",
     "config/**/*.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "vitest.electron.config.ts",
+    "playwright.config.ts"
   ],
 
   "exclude": [

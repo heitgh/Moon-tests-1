@@ -9,7 +9,6 @@ files:
   - assets/**
   - index.html
   - main.js
-  - preload.js
   - preload.cjs
   - package.json
 asar: true

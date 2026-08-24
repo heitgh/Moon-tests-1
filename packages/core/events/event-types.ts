@@ -1,5 +1,6 @@
 export type MoonEventSourceType =
   | "core"
+  | "application"
   | "platform"
   | "ui"
   | "extension"

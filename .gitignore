@@ -3,6 +3,8 @@ dist/
 build/
 release/
 coverage/
+playwright-report/
+test-results/
 .env
 *.log
 database/*.db

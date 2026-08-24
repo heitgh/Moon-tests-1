@@ -9,12 +9,16 @@ import { installApplicationMenu } from "./application-menu.js";
 import { WindowManager } from "./window-manager.js";
 import { ElectronAdblockService } from "../services/adblock-service.js";
 import { ElectronDownloadManager } from "../services/download-manager.js";
+import { ProfileStorage } from "../services/profile-storage.js";
+import { BrowserApplicationService } from "../../application/browser-application-service.js";
 
 const windows = new WindowManager();
 const downloads = new ElectronDownloadManager(windows);
 const adblock = new ElectronAdblockService(windows);
 const browser = new ElectronBrowserManager(windows, downloads, adblock);
 const ipc = new IpcRouter();
+let profile: ProfileStorage | undefined;
+let application: BrowserApplicationService | undefined;
 
 async function createMainWindow(): Promise<void> {
   const appRoot = app.getAppPath();
@@ -33,14 +37,22 @@ async function createMainWindow(): Promise<void> {
   window.webContents.on("will-navigate", event => {
     if (event.url !== window.webContents.getURL()) event.preventDefault();
   });
-  window.once("close", () => { void browser.closeTabsForWindow(id); });
+  window.once("close", () => {
+    if (application?.shuttingDown) return;
+    void application?.flushWindow(id).finally(() => { void browser.closeTabsForWindow(id); });
+  });
+  await application?.restoreWindow(id);
   await window.loadFile(join(appRoot, "index.html"));
 }
 
 app.whenReady().then(async () => {
+  const testProfileDirectory = process.env.NODE_ENV === "test" ? process.env.MOON_TEST_PROFILE_DIR : undefined;
+  profile = new ProfileStorage(testProfileDirectory ?? join(app.getPath("userData"), "profile"));
+  await profile.open();
+  application = new BrowserApplicationService(browser, profile);
   installApplicationMenu();
-  registerBrowserIpc(ipc, browser, windows);
-  registerProductIpc(ipc, downloads, adblock);
+  registerBrowserIpc(ipc, application, windows);
+  registerProductIpc(ipc, downloads, adblock, profile);
   registerApplicationLifecycle(windows, createMainWindow);
   await createMainWindow();
   void adblock.initialize();
@@ -49,4 +61,23 @@ app.whenReady().then(async () => {
   app.exit(1);
 });
 
-app.once("before-quit", () => ipc.dispose());
+let shutdownStarted = false;
+let shutdownComplete = false;
+app.on("before-quit", event => {
+  if (shutdownComplete) return;
+  event.preventDefault();
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  ipc.dispose();
+  if (!application) {
+    shutdownComplete = true;
+    app.quit();
+    return;
+  }
+  void application.shutdown()
+    .catch(error => console.error("Moon shutdown failed", error))
+    .finally(() => {
+      shutdownComplete = true;
+      app.quit();
+    });
+});

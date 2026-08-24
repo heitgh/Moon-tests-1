@@ -3,13 +3,16 @@ import type { ElectronDownloadManager } from "../services/download-manager.js";
 import type { IpcRouter } from "./ipc-router.js";
 import { dialog } from "electron";
 import { readFile, writeFile } from "node:fs/promises";
+import { parseMoonProfileBackup } from "../../../../packages/storage/backup/profile-backup.js";
+import type { ProfileStorage } from "../services/profile-storage.js";
 
 interface IdPayload { readonly id: string; }
 
 export function registerProductIpc(
   router: IpcRouter,
   downloads: ElectronDownloadManager,
-  adblock: ElectronAdblockService
+  adblock: ElectronAdblockService,
+  profile: ProfileStorage
 ): void {
   const idFrom = (payload: IdPayload): string => {
     if (!payload || typeof payload.id !== "string" || payload.id.length > 100) {
@@ -39,13 +42,14 @@ export function registerProductIpc(
     if (!payload || typeof payload.content !== "string" || payload.content.length > 5_000_000) {
       throw new TypeError("Invalid export content");
     }
+    const canonicalContent = JSON.stringify(parseMoonProfileBackup(payload.content), null, 2);
     const result = await dialog.showSaveDialog({
       title: "Exportar dados do Moon",
       defaultPath: `moon-backup-${new Date().toISOString().slice(0, 10)}.json`,
       filters: [{ name: "Moon backup", extensions: ["json"] }]
     });
     if (result.canceled || !result.filePath) return false;
-    await writeFile(result.filePath, payload.content, "utf8");
+    await writeFile(result.filePath, canonicalContent, { encoding: "utf8", mode: 0o600 });
     return true;
   });
   router.register("product:import-data", async () => {
@@ -57,7 +61,12 @@ export function registerProductIpc(
     const path = result.filePaths[0];
     if (result.canceled || !path) return null;
     const content = await readFile(path, "utf8");
-    if (content.length > 5_000_000) throw new Error("Backup file is too large");
-    return content;
+    return JSON.stringify(parseMoonProfileBackup(content));
+  });
+  router.register("product:migrate-legacy-profile", (_event, payload?: { readonly content?: string }) => {
+    if (!payload || typeof payload.content !== "string" || payload.content.length > 5_000_000) {
+      throw new TypeError("Invalid legacy profile content");
+    }
+    return profile.migrateLegacyProfile(payload.content);
   });
 }

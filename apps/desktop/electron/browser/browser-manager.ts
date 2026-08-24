@@ -44,12 +44,18 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     readonly callback: (granted: boolean) => void;
     readonly timeout: NodeJS.Timeout;
   }>();
+  readonly #tabUpdateListeners = new Set<(windowId: string, update: BrowserTabUpdate) => void | Promise<void>>();
 
   constructor(
     readonly windows: WindowManager,
     readonly downloads?: ElectronDownloadManager,
     readonly adblock?: ElectronAdblockService
   ) {}
+
+  onTabUpdated(listener: (windowId: string, update: BrowserTabUpdate) => void | Promise<void>): () => void {
+    this.#tabUpdateListeners.add(listener);
+    return () => this.#tabUpdateListeners.delete(listener);
+  }
 
   async createWindow(options?: BrowserWindowOptions): Promise<string> {
     return this.windows.create(options);
@@ -209,6 +215,10 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
       .map(([, tab]) => tab);
   }
 
+  windowIds(): readonly string[] {
+    return [...new Set(this.#tabWindows.values())];
+  }
+
   setBounds(windowId: string, bounds: Electron.Rectangle): void {
     const window = this.windows.require(windowId);
     const content = window.getContentBounds();
@@ -318,7 +328,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
       this.#syncFromContents(id);
     });
     contents.on("did-navigate", (_event, url) => {
-      this.#replaceTab(id, { url });
+      if (!this.#homeTabs.has(id)) this.#replaceTab(id, { url });
       this.#emitUpdate(id);
     });
     contents.on("did-navigate-in-page", (_event, url) => {
@@ -371,6 +381,11 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
 
   #syncFromContents(id: string): void {
     const contents = this.#requireSurface(id).view.webContents;
+    if (this.#homeTabs.has(id)) {
+      this.#replaceTab(id, { url: "moon://newtab", title: "Nova guia", loading: false });
+      this.#emitUpdate(id);
+      return;
+    }
     this.#replaceTab(id, {
       url: contents.getURL() || this.#requireTab(id).url,
       title: contents.getTitle().trim() || this.#requireTab(id).title,
@@ -396,6 +411,9 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
       ...(error ? { error } : {})
     };
     host.webContents.send("browser:tab-updated", update);
+    for (const listener of this.#tabUpdateListeners) {
+      void Promise.resolve(listener(windowId, update)).catch(error => console.error("Tab update listener failed", error));
+    }
   }
 
   #replaceTab(id: string, patch: Partial<BrowserTab>): void {

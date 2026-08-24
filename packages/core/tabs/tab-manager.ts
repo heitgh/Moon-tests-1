@@ -1,4 +1,4 @@
-import type { Platform } from "@moon/platform";
+import type { BrowserPlatform, BrowserTab } from "@moon/platform";
 import { BrowserError } from "../errors/browser-error.js";
 import { MoonEventBus, moonEventBus } from "../events/event-bus.js";
 import type { CreateTabInput, TabModel } from "../models/tab-model.js";
@@ -9,15 +9,16 @@ export class TabManager {
   readonly #tabs = new Map<string, Tab>();
 
   constructor(
-    readonly platform: Platform,
+    readonly browser: BrowserPlatform,
     readonly eventBus: MoonEventBus = moonEventBus,
     readonly stateStore: MoonStateStore = moonStateStore
   ) {}
 
   async create(input: CreateTabInput): Promise<Readonly<TabModel>> {
-    const platformTab = await this.platform.browser.createTab(
+    const platformTab = await this.browser.createTab(
       input.windowId,
       {
+        id: input.id,
         url: input.url,
         active: input.active,
         workspaceId: input.workspaceId,
@@ -109,7 +110,7 @@ export class TabManager {
     const tab = this.require(tabId);
     const previousTab = this.list(tab.model.windowId).find(item => item.active);
 
-    await this.platform.browser.activateTab(tabId);
+    await this.browser.activateTab(tabId);
 
     for (const candidate of this.#tabs.values()) {
       if (candidate.model.windowId === tab.model.windowId) {
@@ -138,13 +139,73 @@ export class TabManager {
     const tab = this.require(tabId);
     const model = tab.model;
 
-    await this.platform.browser.closeTab(tabId);
+    await this.browser.closeTab(tabId);
     this.#tabs.delete(tabId);
     await this.#persist();
     await this.eventBus.publish("tab:closed", { tab: model, reason }, {
       context: { windowId: model.windowId, tabId },
       source: { type: "core", id: "tab-manager" }
     });
+  }
+
+  async reconcile(
+    windowId: string,
+    platformTab: BrowserTab,
+    navigation: { readonly canGoBack: boolean; readonly canGoForward: boolean }
+  ): Promise<Readonly<TabModel>> {
+    const existing = this.#tabs.get(platformTab.id);
+    if (existing) {
+      const current = existing.model;
+      const loadingState = platformTab.loading ? "loading" : "idle";
+      if (
+        current.url === platformTab.url && current.title === platformTab.title &&
+        current.active === platformTab.active && current.loadingState === loadingState &&
+        current.canGoBack === navigation.canGoBack && current.canGoForward === navigation.canGoForward &&
+        current.workspaceId === platformTab.workspaceId && current.sessionId === platformTab.sessionId
+      ) return current;
+      return this.update(platformTab.id, {
+        url: platformTab.url,
+        title: platformTab.title,
+        active: platformTab.active,
+        private: platformTab.private,
+        loadingState,
+        canGoBack: navigation.canGoBack,
+        canGoForward: navigation.canGoForward,
+        workspaceId: platformTab.workspaceId,
+        sessionId: platformTab.sessionId,
+        lastAccessedAt: platformTab.active ? Date.now() : current.lastAccessedAt
+      });
+    }
+
+    const now = Date.now();
+    const model: TabModel = {
+      id: platformTab.id,
+      windowId,
+      url: platformTab.url,
+      title: platformTab.title,
+      position: this.list(windowId).length,
+      active: platformTab.active,
+      pinned: false,
+      muted: false,
+      audible: false,
+      discarded: false,
+      private: platformTab.private,
+      loadingState: platformTab.loading ? "loading" : "idle",
+      canGoBack: navigation.canGoBack,
+      canGoForward: navigation.canGoForward,
+      workspaceId: platformTab.workspaceId,
+      sessionId: platformTab.sessionId,
+      createdAt: now,
+      updatedAt: now,
+      lastAccessedAt: now
+    };
+    this.#tabs.set(model.id, new Tab(model));
+    await this.#persist();
+    await this.eventBus.publish("tab:restored", { tab: model }, {
+      context: { windowId, tabId: model.id },
+      source: { type: "application", id: "desktop-browser-application" }
+    });
+    return model;
   }
 
   async #persist(): Promise<void> {

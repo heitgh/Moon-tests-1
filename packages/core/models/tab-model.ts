@@ -26,6 +26,7 @@ export interface TabModel {
 }
 
 export interface CreateTabInput {
+  readonly id?: string;
   readonly windowId: string;
   readonly url?: string;
   readonly active?: boolean;

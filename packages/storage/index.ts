@@ -1,5 +1,7 @@
 export * from "./backup/backup-manager.js";
+export * from "./adapters/better-sqlite-connection.js";
 export * from "./backup/restore-manager.js";
+export * from "./backup/profile-backup.js";
 export * from "./cache/cache-manager.js";
 export * from "./cache/cache-store.js";
 export * from "./database/connection.js";
@@ -7,6 +9,7 @@ export * from "./database/database.js";
 export * from "./database/migrations.js";
 export * from "./database/transaction.js";
 export * from "./migrations/migration-manager.js";
+export * from "./migrations/foundation-migrations.js";
 export * from "./repositories/bookmark-repository.js";
 export * from "./repositories/extension-repository.js";
 export * from "./repositories/history-repository.js";

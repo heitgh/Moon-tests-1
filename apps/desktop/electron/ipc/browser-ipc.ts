@@ -1,5 +1,5 @@
 import type { IpcMainInvokeEvent } from "electron";
-import type { ElectronBrowserManager } from "../browser/browser-manager.js";
+import type { BrowserApplicationApi } from "../../application/browser-application-service.js";
 import type { WindowManager } from "../main/window-manager.js";
 import type { IpcRouter } from "./ipc-router.js";
 
@@ -10,7 +10,7 @@ interface CreateTabPayload { readonly url?: string; readonly workspaceId?: strin
 
 export function registerBrowserIpc(
   router: IpcRouter,
-  browser: ElectronBrowserManager,
+  browser: BrowserApplicationApi,
   windows: WindowManager
 ): void {
   const windowIdFor = (event: IpcMainInvokeEvent): string => {

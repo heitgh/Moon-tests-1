@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("moonBrowser", Object.freeze({
   setAdblockEnabled: enabled => invoke("adblock:set-enabled", { enabled }),
   exportProductData: content => invoke("product:export-data", { content }),
   importProductData: () => invoke("product:import-data"),
+  migrateLegacyProfile: content => invoke("product:migrate-legacy-profile", { content }),
   onTabUpdated: listener => subscribe("browser:tab-updated", listener),
   onTabClosed: listener => subscribe("browser:tab-closed", listener),
   onDownloadsUpdated: listener => subscribe("download:updated", listener),
