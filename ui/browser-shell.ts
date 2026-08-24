@@ -238,9 +238,9 @@ class BrowserShell {
   #toggleDrawer(name: Drawer): void { if (this.#openDrawer === name) return this.#closeDrawer(); this.#openDrawer = name; this.#drawer.classList.add("is-open"); this.#renderDrawer(); requestAnimationFrame(() => this.#syncBounds()); }
   #closeDrawer(): void { this.#openDrawer = undefined; this.#drawer.classList.remove("is-open"); this.#rail.forEach(item => item.classList.remove("is-active")); this.#render(); requestAnimationFrame(() => this.#syncBounds()); }
   #renderDrawer(): void {
-    if (!this.#openDrawer) return; const titles: Readonly<Record<Drawer, string>> = { workspaces: "Workspaces", bookmarks: "Favoritos", history: "Histórico", ai: "Moon AI", security: "Proteção" };
+    if (!this.#openDrawer) return; const titles: Readonly<Record<Drawer, string>> = { workspaces: "Workspaces", bookmarks: "Favoritos", downloads: "Downloads", history: "Histórico", translate: "Tradutor", notes: "Bloco de notas", extensions: "Extensões", ai: "Moon AI", security: "Proteção" };
     this.#drawerTitle.textContent = titles[this.#openDrawer]; this.#drawerBody.replaceChildren(); this.#rail.forEach(item => item.classList.remove("is-active")); this.#rail.get(this.#openDrawer)?.classList.add("is-active");
-    if (this.#openDrawer === "workspaces") this.#workspaceDrawer(); if (this.#openDrawer === "bookmarks") this.#bookmarksDrawer(); if (this.#openDrawer === "history") this.#historyDrawer(); if (this.#openDrawer === "ai") this.#aiDrawer(); if (this.#openDrawer === "security") this.#securityDrawer();
+    if (this.#openDrawer === "workspaces") this.#workspaceDrawer(); if (this.#openDrawer === "bookmarks") this.#bookmarksDrawer(); if (this.#openDrawer === "downloads") this.#downloadsDrawer(); if (this.#openDrawer === "history") this.#historyDrawer(); if (this.#openDrawer === "translate") this.#translateDrawer(); if (this.#openDrawer === "notes") this.#notesDrawer(); if (this.#openDrawer === "extensions") this.#extensionsDrawer(); if (this.#openDrawer === "ai") this.#aiDrawer(); if (this.#openDrawer === "security") this.#securityDrawer();
   }
   #workspaceDrawer(): void {
     this.#drawerBody.append(el("p", "moon-drawer-description", "Separe abas e sessões por contexto.")); const list = el("div", "moon-panel-list");
@@ -255,6 +255,58 @@ class BrowserShell {
     const summary = el("div", "moon-panel-summary"); summary.append(el("span", "", `${this.#history.length} páginas`)); const clear = btn("moon-text-button is-danger", "Limpar histórico", "trash"); clear.append(el("span", "", "Limpar")); clear.disabled = !this.#history.length; clear.addEventListener("click", () => { this.#history = []; save(KEYS.history, this.#history); this.#renderDrawer(); }); summary.append(clear); this.#drawerBody.append(summary);
     if (!this.#history.length) return this.#empty("history", "Histórico vazio", "As páginas visitadas aparecerão aqui."); const list = el("div", "moon-panel-list"); this.#history.slice(0, 100).forEach(item => list.append(this.#linkRow(item, undefined, new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(item.time)))); this.#drawerBody.append(list);
   }
+  #downloadsDrawer(): void {
+    const summary = el("div", "moon-panel-summary");
+    summary.append(el("span", "", `${this.#downloads.length} downloads`));
+    const clear = btn("moon-text-button", "Limpar downloads finalizados", "trash");
+    clear.append(el("span", "", "Limpar concluídos"));
+    clear.disabled = !this.#downloads.some(item => ["completed", "cancelled", "failed"].includes(item.state));
+    clear.addEventListener("click", () => void this.#bridge?.clearFinishedDownloads());
+    summary.append(clear);
+    this.#drawerBody.append(summary);
+    if (!this.#downloads.length) return this.#empty("download", "Nenhum download", "Arquivos baixados pelos sites aparecerão aqui com progresso real.");
+    const list = el("div", "moon-download-list");
+    this.#downloads.forEach(download => {
+      const row = el("article", "moon-download-row");
+      const header = el("div", "moon-download-header");
+      header.append(el("strong", "", download.filename), el("span", `moon-download-state is-${download.state}`, this.#downloadStateLabel(download.state)));
+      const progress = el("progress", "moon-download-progress");
+      progress.max = 100; progress.value = download.percentage ?? 0;
+      const detail = el("div", "moon-download-detail", `${this.#bytes(download.receivedBytes)} / ${download.totalBytes > 0 ? this.#bytes(download.totalBytes) : "tamanho desconhecido"}`);
+      const actions = el("div", "moon-download-actions");
+      if (download.state === "in-progress") actions.append(this.#downloadAction("Pausar", "pause", () => void this.#bridge?.pauseDownload(download.id)));
+      if (download.state === "paused") actions.append(this.#downloadAction("Continuar", "play", () => void this.#bridge?.resumeDownload(download.id)));
+      if (["in-progress", "paused"].includes(download.state)) actions.append(this.#downloadAction("Cancelar", "close", () => void this.#bridge?.cancelDownload(download.id)));
+      if (download.state === "completed") {
+        actions.append(this.#downloadAction("Abrir", "play", () => void this.#bridge?.openDownload(download.id)));
+        actions.append(this.#downloadAction("Pasta", "folder", () => void this.#bridge?.showDownloadInFolder(download.id)));
+      }
+      row.append(header, progress, detail, actions); list.append(row);
+    });
+    this.#drawerBody.append(list);
+  }
+  #translateDrawer(): void {
+    const active = this.#activeTabId ? this.#tabs.get(this.#activeTabId) : undefined;
+    const title = el("div", "moon-tool-hero"); title.append(svg("translate"), el("strong", "", "Traduzir página"));
+    const language = el("select", "moon-select");
+    [["pt", "Português"], ["en", "English"], ["es", "Español"], ["fr", "Français"], ["de", "Deutsch"], ["ja", "日本語"]].forEach(([value, label]) => { const option = el("option", "", label); option.value = value!; language.append(option); });
+    const translate = btn("moon-primary-button", "Traduzir página atual", "translate"); translate.append(el("span", "", "Traduzir página atual")); translate.disabled = !active || !this.#isWeb(active.url);
+    translate.addEventListener("click", () => { if (active && this.#isWeb(active.url)) void this.#navigate(`https://translate.google.com/translate?sl=auto&tl=${encodeURIComponent(language.value)}&u=${encodeURIComponent(active.url)}`); });
+    this.#drawerBody.append(title, el("p", "moon-drawer-description", "A página será aberta pelo Google Translate no idioma escolhido."), language, translate);
+  }
+  #notesDrawer(): void {
+    const title = el("div", "moon-tool-hero"); title.append(svg("note"), el("strong", "", "Anotações rápidas"));
+    const textarea = el("textarea", "moon-notes-input"); textarea.value = this.#notes; textarea.placeholder = "Suas anotações ficam salvas localmente neste perfil do Moon."; textarea.rows = 14;
+    const status = el("span", "moon-notes-status", "Salvo localmente");
+    textarea.addEventListener("input", () => { this.#notes = textarea.value; save(KEYS.notes, this.#notes); status.textContent = "Salvo agora"; });
+    this.#drawerBody.append(title, textarea, status);
+  }
+  #extensionsDrawer(): void {
+    const title = el("div", "moon-tool-hero"); title.append(svg("plugin"), el("strong", "", "Extensões"));
+    const card = el("div", "moon-info-card"); card.append(svg("shield"), el("p", "", "O runtime de extensões existe no Core, mas nenhuma extensão foi instalada neste perfil. O Moon não exibirá extensões fictícias como se estivessem ativas."));
+    const compatibility = el("div", "moon-extension-status"); compatibility.append(el("strong", "", "Compatibilidade Chromium"), el("span", "", "Em desenvolvimento"));
+    this.#drawerBody.append(title, card, compatibility);
+  }
   #linkRow(item: SavedLink, remove?: () => void, meta?: string): HTMLElement { const row = el("div", "moon-link-row"); const open = btn("moon-link-main", `Abrir ${item.title}`); const copy = el("span", "moon-list-copy"); copy.append(el("strong", "", item.title), el("small", "", meta ?? this.#hostname(item.url))); open.append(el("span", "moon-site-mark", item.title[0]?.toUpperCase()), copy); open.addEventListener("click", () => void this.#navigate(item.url)); row.append(open); if (remove) { const removeButton = btn("moon-icon-button", `Remover ${item.title}`, "close"); removeButton.addEventListener("click", remove); row.append(removeButton); } return row; }
   #aiDrawer(): void {
     const hero = el("div", "moon-ai-hero"); hero.append(svg("sparkles"), el("strong", "", "Moon AI"), el("span", "moon-preview-badge", "PREVIEW"));
@@ -262,9 +314,17 @@ class BrowserShell {
     const info = el("div", "moon-info-card"); info.append(svg("sparkles"), el("p", "", "A conexão com um provedor de IA será feita no processo seguro, sem expor chaves na interface.")); this.#drawerBody.append(hero, el("p", "moon-drawer-description", "Nesta versão local, o Moon encaminha a pergunta ao motor de busca escolhido — sem fingir que já existe uma IA conectada."), form, info);
   }
   #securityDrawer(): void {
-    const hero = el("div", "moon-security-hero"); hero.append(svg("shield"), el("strong", "", "Navegação isolada"), el("span", "", "ATIVA")); const list = el("div", "moon-security-list");
-    [["Context isolation", "A página não acessa APIs internas do Moon."], ["Sandbox", "Sites executam em processos restritos do Chromium."], ["Navegação", "Somente HTTP e HTTPS são aceitos."], ["Workspaces", "Cada espaço usa uma sessão separada."]].forEach(([title, detail]) => { const item = el("div", "moon-security-item"); item.append(el("span", "moon-check", "✓"), el("strong", "", title), el("p", "", detail)); list.append(item); }); this.#drawerBody.append(hero, list);
+    const hero = el("div", "moon-security-hero"); hero.append(svg("shield"), el("strong", "", "Navegação isolada"), el("span", "", "ATIVA"));
+    const adblock = el("div", "moon-adblock-control"); const copy = el("span", "moon-list-copy"); copy.append(el("strong", "", "Moon AdBlock"), el("small", "", this.#adblockDetail()));
+    const toggle = btn(`moon-adblock-toggle${this.#adblock.enabled ? " is-active" : ""}`, this.#adblock.enabled ? "Desativar AdBlock" : "Ativar AdBlock"); toggle.append(el("span")); toggle.disabled = this.#adblock.phase === "loading" || this.#adblock.phase === "failed"; toggle.addEventListener("click", () => void this.#bridge?.setAdblockEnabled(!this.#adblock.enabled)); adblock.append(copy, toggle);
+    const list = el("div", "moon-security-list");
+    [["Context isolation", "A página não acessa APIs internas do Moon."], ["Sandbox", "Sites executam em processos restritos do Chromium."], ["Navegação", "Somente HTTP e HTTPS são aceitos."], ["Workspaces", "Cada espaço usa uma sessão separada."]].forEach(([title, detail]) => { const item = el("div", "moon-security-item"); item.append(el("span", "moon-check", "✓"), el("strong", "", title), el("p", "", detail)); list.append(item); }); this.#drawerBody.append(hero, adblock, list);
   }
+  #renderAdblock(): void { this.#securityPill.classList.toggle("is-disabled", this.#adblock.phase === "disabled" || this.#adblock.phase === "failed"); this.#securityPill.classList.toggle("is-loading", this.#adblock.phase === "loading"); this.#securityText.textContent = this.#adblock.phase === "loading" ? "AdBlock carregando" : this.#adblock.phase === "failed" ? "AdBlock indisponível" : this.#adblock.enabled ? `${this.#adblock.blockedCount} bloqueados` : "AdBlock desligado"; }
+  #adblockDetail(): string { if (this.#adblock.phase === "loading") return "Carregando filtros reais…"; if (this.#adblock.phase === "failed") return `Falhou: ${this.#adblock.error ?? "erro desconhecido"}`; return this.#adblock.enabled ? `${this.#adblock.blockedCount} requisições bloqueadas nesta sessão` : "Proteção de anúncios desativada"; }
+  #downloadAction(label: string, name: IconName, action: () => void): HTMLButtonElement { const actionButton = btn("moon-download-action", label, name); actionButton.append(el("span", "", label)); actionButton.addEventListener("click", action); return actionButton; }
+  #downloadStateLabel(state: ManagedDownload["state"]): string { return ({ "in-progress": "Baixando", paused: "Pausado", completed: "Concluído", cancelled: "Cancelado", failed: "Falhou" })[state]; }
+  #bytes(value: number): string { if (value < 1024) return `${value} B`; if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`; if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`; return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`; }
   #empty(name: IconName, title: string, detail: string): void { const empty = el("div", "moon-empty"); empty.append(svg(name), el("strong", "", title), el("p", "", detail)); this.#drawerBody.append(empty); }
 
   async #openSettings(): Promise<void> {
