@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld("moonBrowser", Object.freeze({
   clearFinishedDownloads: () => invoke("download:clear-finished"),
   getAdblockStatus: () => invoke("adblock:get-status"),
   setAdblockEnabled: enabled => invoke("adblock:set-enabled", { enabled }),
+  exportProductData: content => invoke("product:export-data", { content }),
+  importProductData: () => invoke("product:import-data"),
   onTabUpdated: listener => subscribe("browser:tab-updated", listener),
   onTabClosed: listener => subscribe("browser:tab-closed", listener),
   onDownloadsUpdated: listener => subscribe("download:updated", listener),

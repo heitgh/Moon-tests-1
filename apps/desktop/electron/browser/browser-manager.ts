@@ -52,6 +52,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   async createTab(windowId: string, options: BrowserTabOptions = {}): Promise<BrowserTab> {
     const id = options.id ?? randomUUID();
     if (this.#tabs.has(id)) throw new Error(`Tab already exists: ${id}`);
+    const sessionId = options.private ? options.sessionId ?? id : options.sessionId;
 
     const window = this.windows.require(windowId);
     const surface = new ElectronBrowserSurface(`surface-${id}`, id, window, {
@@ -60,7 +61,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
         nodeIntegration: false,
         sandbox: true,
         partition: options.private
-          ? `private:${id}`
+          ? `private:${sessionId}`
           : options.workspaceId
             ? `persist:workspace:${options.workspaceId}`
             : "persist:default"
@@ -78,7 +79,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
       active: false,
       loading: !isHome,
       workspaceId: options.workspaceId,
-      sessionId: options.sessionId,
+      sessionId,
       private: options.private ?? false
     };
 
@@ -91,14 +92,20 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     const bounds = this.#bounds.get(windowId);
     if (bounds) surface.setBounds(bounds);
 
+    let initialNavigationError: string | undefined;
     if (!isHome) {
-      await new NavigationController(surface.view.webContents).navigate(requestedUrl);
+      try {
+        await new NavigationController(surface.view.webContents).navigate(requestedUrl);
+      } catch (error) {
+        initialNavigationError = error instanceof Error ? error.message : String(error);
+        this.#replaceTab(id, { loading: false, title: "Falha ao carregar" });
+      }
     } else {
       await surface.view.webContents.loadURL("about:blank");
     }
 
     if (options.active !== false || !this.#activeTabs.has(windowId)) await this.activateTab(id);
-    this.#emitUpdate(id);
+    this.#emitUpdate(id, initialNavigationError);
     return this.#requireTab(id);
   }
 
@@ -257,7 +264,14 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     const contents = surface.view.webContents;
 
     contents.setWindowOpenHandler(({ url }) => {
-      void this.createTab(windowId, { url, active: true }).catch(error => {
+      const source = this.#requireTab(id);
+      void this.createTab(windowId, {
+        url,
+        active: true,
+        workspaceId: source.workspaceId,
+        sessionId: source.sessionId,
+        private: source.private
+      }).catch(error => {
         console.error("Failed to open tab", error);
       });
       return { action: "deny" };

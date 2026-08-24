@@ -102,7 +102,11 @@ export class ElectronDownloadManager {
       const currentTotal = Math.max(0, item.getTotalBytes());
       this.#update(id, {
         savePath: item.getSavePath(),
-        state: item.isPaused() ? "paused" : state === "interrupted" ? "failed" : "in-progress",
+        state: item.isPaused() || (state === "interrupted" && item.canResume())
+          ? "paused"
+          : state === "interrupted"
+            ? "failed"
+            : "in-progress",
         receivedBytes,
         totalBytes: currentTotal,
         speedBytesPerSecond: item.getCurrentBytesPerSecond(),
