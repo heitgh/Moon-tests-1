@@ -17,16 +17,29 @@ interface Bridge {
   stop(tabId: string): Promise<void>;
   setBounds(bounds: { x: number; y: number; width: number; height: number }): Promise<void>;
   setContentVisible(visible: boolean): Promise<void>;
+  getDownloads(): Promise<readonly ManagedDownload[]>;
+  pauseDownload(id: string): Promise<void>;
+  resumeDownload(id: string): Promise<void>;
+  cancelDownload(id: string): Promise<void>;
+  openDownload(id: string): Promise<void>;
+  showDownloadInFolder(id: string): Promise<void>;
+  clearFinishedDownloads(): Promise<void>;
+  getAdblockStatus(): Promise<AdblockStatus>;
+  setAdblockEnabled(enabled: boolean): Promise<AdblockStatus>;
   onTabUpdated(listener: (update: TabUpdate) => void): () => void;
   onTabClosed(listener: (event: { readonly tabId: string }) => void): () => void;
+  onDownloadsUpdated(listener: (downloads: readonly ManagedDownload[]) => void): () => void;
+  onAdblockStatus(listener: (status: AdblockStatus) => void): () => void;
 }
 interface Workspace { readonly id: string; readonly name: string; }
 interface SavedLink { readonly id: string; readonly title: string; readonly url: string; readonly time: number; }
 type SearchEngine = "duckduckgo" | "google" | "brave";
 interface Preferences { readonly accent: string; readonly wallpaper: string; readonly searchEngine: SearchEngine; readonly showClock: boolean; readonly showShortcuts: boolean; readonly glassHome: boolean; }
-type Drawer = "workspaces" | "bookmarks" | "history" | "ai" | "security";
+interface ManagedDownload { readonly id: string; readonly url: string; readonly filename: string; readonly savePath: string; readonly state: "in-progress" | "paused" | "completed" | "cancelled" | "failed"; readonly receivedBytes: number; readonly totalBytes: number; readonly speedBytesPerSecond: number; readonly percentage: number | null; readonly startedAt: number; readonly completedAt?: number; }
+interface AdblockStatus { readonly phase: "loading" | "active" | "disabled" | "failed"; readonly enabled: boolean; readonly blockedCount: number; readonly error?: string; }
+type Drawer = "workspaces" | "bookmarks" | "downloads" | "history" | "translate" | "notes" | "extensions" | "ai" | "security";
 
-const KEYS = { bookmarks: "moon:bookmarks:v1", history: "moon:history:v1", preferences: "moon:preferences:v1", workspaces: "moon:workspaces:v1" } as const;
+const KEYS = { bookmarks: "moon:bookmarks:v1", history: "moon:history:v1", preferences: "moon:preferences:v1", workspaces: "moon:workspaces:v1", notes: "moon:notes:v1" } as const;
 const WORKSPACES: readonly Workspace[] = [{ id: "research", name: "Pesquisa" }, { id: "study", name: "Estudos" }, { id: "projects", name: "Projetos" }];
 const DEFAULTS: Preferences = {
   accent: "#8a5cf5",
@@ -58,6 +71,11 @@ const ICONS = {
   trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>', globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>',
   palette: '<path d="M12 3a9 9 0 0 0 0 18h1.5a1.5 1.5 0 0 0 0-3H13a2 2 0 0 1 0-4h2a6 6 0 0 0 0-11Z"/><circle cx="8" cy="10" r=".6"/><circle cx="10" cy="7" r=".6"/><circle cx="14" cy="7" r=".6"/>'
+  ,download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/>',
+  note: '<path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  translate: '<path d="M4 5h9M8.5 3v2M6 8c1 3 3 5 6 6M12 8c-1 3-3 5-6 6"/><path d="m14 21 4-10 4 10M15.5 17h5"/>',
+  plugin: '<path d="M8 3h3a2 2 0 1 0 4 0h3v5a2 2 0 1 1 0 4v5h-5a2 2 0 1 1-4 0H4v-5a2 2 0 1 0 0-4V3Z"/>',
+  pause: '<path d="M9 5v14M15 5v14"/>', play: '<path d="m8 5 11 7-11 7Z"/>', folder: '<path d="M3 6h7l2 2h9v11H3Z"/>'
 } as const;
 type IconName = keyof typeof ICONS;
 
@@ -83,6 +101,8 @@ class BrowserShell {
   readonly #forward = btn("moon-nav-button", "Avançar", "forward");
   readonly #reload = btn("moon-nav-button", "Recarregar", "reload");
   readonly #bookmark = btn("moon-nav-button moon-bookmark-button", "Adicionar aos favoritos", "star");
+  readonly #securityPill = btn("moon-security-pill", "Proteção e AdBlock", "shield");
+  readonly #securityText = el("span", "moon-security-text", "AdBlock carregando");
   readonly #status = el("div", "moon-status");
   readonly #clock = el("div", "moon-home-clock");
   readonly #date = el("div", "moon-home-date");
@@ -90,6 +110,9 @@ class BrowserShell {
   #workspaces = load<Workspace[]>(KEYS.workspaces, [...WORKSPACES]);
   #bookmarks = load<SavedLink[]>(KEYS.bookmarks, []);
   #history = load<SavedLink[]>(KEYS.history, []);
+  #downloads: readonly ManagedDownload[] = [];
+  #notes = load<string>(KEYS.notes, "");
+  #adblock: AdblockStatus = { phase: "loading", enabled: true, blockedCount: 0 };
   #preferences = { ...DEFAULTS, ...load<Partial<Preferences>>(KEYS.preferences, {}) };
   #workspaceId = this.#workspaces[0]?.id ?? "research";
   #activeTabId: string | undefined;
@@ -104,7 +127,11 @@ class BrowserShell {
     if (!this.#bridge) { this.#status.textContent = "Prévia da interface — use npm run dev:desktop para navegar."; return; }
     this.#bridge.onTabUpdated(update => this.#applyUpdate(update));
     this.#bridge.onTabClosed(({ tabId }) => { void this.#handleClosed(tabId); });
+    this.#bridge.onDownloadsUpdated(downloads => { this.#downloads = downloads; this.#renderDrawer(); });
+    this.#bridge.onAdblockStatus(status => { this.#adblock = status; this.#renderAdblock(); this.#renderDrawer(); });
     try {
+      this.#downloads = await this.#bridge.getDownloads();
+      this.#adblock = await this.#bridge.getAdblockStatus();
       const tabs = await this.#bridge.getTabs();
       tabs.forEach(tab => this.#tabs.set(tab.id, tab));
       const active = tabs.find(tab => tab.active);
@@ -119,7 +146,9 @@ class BrowserShell {
     const brand = btn("moon-brand", "Moon Browser", "moon"); brand.addEventListener("click", () => void this.#showHome()); rail.append(brand);
     const controls: readonly [string, string, IconName, () => void][] = [
       ["home", "Página inicial", "home", () => void this.#showHome()], ["workspaces", "Workspaces", "grid", () => this.#toggleDrawer("workspaces")],
-      ["bookmarks", "Favoritos", "star", () => this.#toggleDrawer("bookmarks")], ["history", "Histórico", "history", () => this.#toggleDrawer("history")],
+      ["bookmarks", "Favoritos", "star", () => this.#toggleDrawer("bookmarks")], ["downloads", "Downloads", "download", () => this.#toggleDrawer("downloads")],
+      ["history", "Histórico", "history", () => this.#toggleDrawer("history")], ["translate", "Traduzir página", "translate", () => this.#toggleDrawer("translate")],
+      ["notes", "Bloco de notas", "note", () => this.#toggleDrawer("notes")], ["extensions", "Extensões", "plugin", () => this.#toggleDrawer("extensions")],
       ["ai", "Moon AI", "sparkles", () => this.#toggleDrawer("ai")]
     ];
     controls.forEach(([id, label, name, action]) => { const control = btn("moon-rail-button", label, name); control.addEventListener("click", action); this.#rail.set(id, control); rail.append(control); });
@@ -134,15 +163,16 @@ class BrowserShell {
 
     const toolbar = el("div", "moon-toolbar-v2");
     this.#back.addEventListener("click", () => void this.#command("back")); this.#forward.addEventListener("click", () => void this.#command("forward")); this.#reload.addEventListener("click", () => void this.#refresh());
-    const security = btn("moon-security-pill", "Informações de proteção", "shield"); security.append(el("span", "moon-security-text", "Protegido")); security.addEventListener("click", () => this.#toggleDrawer("security"));
+    this.#securityPill.append(this.#securityText); this.#securityPill.addEventListener("click", () => this.#toggleDrawer("security"));
     const address = el("form", "moon-address"); this.#omnibox.type = "text"; this.#omnibox.autocomplete = "off"; this.#omnibox.spellcheck = false; this.#omnibox.placeholder = "Pesquise ou digite um endereço";
-    address.append(security, this.#omnibox, this.#bookmark); address.addEventListener("submit", event => { event.preventDefault(); void this.#navigate(this.#omnibox.value); });
+    address.append(this.#securityPill, this.#omnibox, this.#bookmark); address.addEventListener("submit", event => { event.preventDefault(); void this.#navigate(this.#omnibox.value); });
     this.#bookmark.addEventListener("click", () => this.#toggleBookmark());
     const ai = btn("moon-ai-button", "Abrir Moon AI", "sparkles"); ai.append(el("span", "", "Moon AI")); ai.addEventListener("click", () => this.#toggleDrawer("ai"));
     toolbar.append(this.#back, this.#forward, this.#reload, address, ai);
 
     const content = el("div", "moon-content"); const stage = el("div", "moon-stage"); this.#buildHome(); stage.append(this.#home, this.#viewport, this.#status); content.append(stage);
     main.append(tabsBar, toolbar, this.#workspaceBar, content); shell.append(rail, this.#drawer, main); this.container.replaceChildren(shell);
+    this.#renderAdblock();
   }
 
   #buildHome(): void {

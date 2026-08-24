@@ -9,6 +9,8 @@ import type { ElectronBrowserBackend } from "../../adapters/electron-browser.js"
 import type { WindowManager } from "../main/window-manager.js";
 import { ElectronBrowserSurface } from "./browser-surface.js";
 import { NavigationController } from "./navigation-controller.js";
+import type { ElectronAdblockService } from "../services/adblock-service.js";
+import type { ElectronDownloadManager } from "../services/download-manager.js";
 
 export interface BrowserNavigationState {
   readonly canGoBack: boolean;
@@ -30,7 +32,11 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   readonly #bounds = new Map<string, Electron.Rectangle>();
   readonly #contentVisible = new Map<string, boolean>();
 
-  constructor(readonly windows: WindowManager) {}
+  constructor(
+    readonly windows: WindowManager,
+    readonly downloads?: ElectronDownloadManager,
+    readonly adblock?: ElectronAdblockService
+  ) {}
 
   async createWindow(options?: BrowserWindowOptions): Promise<string> {
     return this.windows.create(options);
@@ -60,6 +66,8 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
             : "persist:default"
       }
     });
+    this.downloads?.attach(surface.view.webContents.session);
+    this.adblock?.attach(surface.view.webContents.session);
 
     const requestedUrl = options.url ?? "moon://newtab";
     const isHome = requestedUrl === "moon://newtab" || requestedUrl === "about:blank";

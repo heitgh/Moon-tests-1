@@ -1,0 +1,35 @@
+import type { ElectronAdblockService } from "../services/adblock-service.js";
+import type { ElectronDownloadManager } from "../services/download-manager.js";
+import type { IpcRouter } from "./ipc-router.js";
+
+interface IdPayload { readonly id: string; }
+
+export function registerProductIpc(
+  router: IpcRouter,
+  downloads: ElectronDownloadManager,
+  adblock: ElectronAdblockService
+): void {
+  const idFrom = (payload: IdPayload): string => {
+    if (!payload || typeof payload.id !== "string" || payload.id.length > 100) {
+      throw new TypeError("A valid ID is required");
+    }
+    return payload.id;
+  };
+
+  router.register("download:list", () => downloads.list());
+  router.register("download:pause", (_event, payload: IdPayload) => downloads.pause(idFrom(payload)));
+  router.register("download:resume", (_event, payload: IdPayload) => downloads.resume(idFrom(payload)));
+  router.register("download:cancel", (_event, payload: IdPayload) => downloads.cancel(idFrom(payload)));
+  router.register("download:open", (_event, payload: IdPayload) => downloads.open(idFrom(payload)));
+  router.register("download:show-in-folder", (_event, payload: IdPayload) => downloads.showInFolder(idFrom(payload)));
+  router.register("download:clear-finished", () => downloads.clearFinished());
+
+  router.register("adblock:get-status", () => adblock.status());
+  router.register("adblock:set-enabled", (_event, payload?: { readonly enabled?: boolean }) => {
+    if (!payload || typeof payload.enabled !== "boolean") {
+      throw new TypeError("An enabled value is required");
+    }
+    adblock.setEnabled(payload.enabled);
+    return adblock.status();
+  });
+}
