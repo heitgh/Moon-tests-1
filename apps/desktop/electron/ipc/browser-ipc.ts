@@ -64,4 +64,10 @@ export function registerBrowserIpc(
     }
     browser.setContentVisible(windowIdFor(event), payload.visible);
   });
+  router.register("browser:respond-permission", (event, payload?: { readonly requestId?: string; readonly granted?: boolean }) => {
+    if (!payload || typeof payload.requestId !== "string" || typeof payload.granted !== "boolean") {
+      throw new TypeError("A valid permission response is required");
+    }
+    browser.respondToPermission(windowIdFor(event), payload.requestId, payload.granted);
+  });
 }

@@ -11,6 +11,7 @@ import { ElectronBrowserSurface } from "./browser-surface.js";
 import { NavigationController } from "./navigation-controller.js";
 import type { ElectronAdblockService } from "../services/adblock-service.js";
 import type { ElectronDownloadManager } from "../services/download-manager.js";
+import type { Session } from "electron";
 
 export interface BrowserNavigationState {
   readonly canGoBack: boolean;
@@ -23,6 +24,12 @@ export interface BrowserTabUpdate {
   readonly error?: string;
 }
 
+export interface BrowserPermissionRequest {
+  readonly id: string;
+  readonly origin: string;
+  readonly permission: string;
+}
+
 export class ElectronBrowserManager implements ElectronBrowserBackend {
   readonly #surfaces = new Map<string, ElectronBrowserSurface>();
   readonly #tabs = new Map<string, BrowserTab>();
@@ -31,6 +38,12 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   readonly #activeTabs = new Map<string, string>();
   readonly #bounds = new Map<string, Electron.Rectangle>();
   readonly #contentVisible = new Map<string, boolean>();
+  readonly #permissionSessions = new WeakSet<Session>();
+  readonly #permissionRequests = new Map<string, {
+    readonly windowId: string;
+    readonly callback: (granted: boolean) => void;
+    readonly timeout: NodeJS.Timeout;
+  }>();
 
   constructor(
     readonly windows: WindowManager,
@@ -69,6 +82,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     });
     this.downloads?.attach(surface.view.webContents.session);
     this.adblock?.attach(surface.view.webContents.session);
+    this.#installPermissionHandler(surface.view.webContents.session);
 
     const requestedUrl = options.url ?? "moon://newtab";
     const isHome = requestedUrl === "moon://newtab" || requestedUrl === "about:blank";
@@ -225,6 +239,14 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     return this.#tabWindows.get(tabId) === windowId;
   }
 
+  respondToPermission(windowId: string, requestId: string, granted: boolean): void {
+    const request = this.#permissionRequests.get(requestId);
+    if (!request || request.windowId !== windowId) throw new Error("Permission request not found");
+    clearTimeout(request.timeout);
+    this.#permissionRequests.delete(requestId);
+    request.callback(granted);
+  }
+
   async closeTabsForWindow(windowId: string): Promise<void> {
     const ids = [...this.#tabs.keys()].filter(id => this.#tabWindows.get(id) === windowId);
     for (const id of ids) {
@@ -238,6 +260,12 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     this.#activeTabs.delete(windowId);
     this.#bounds.delete(windowId);
     this.#contentVisible.delete(windowId);
+    for (const [requestId, request] of this.#permissionRequests) {
+      if (request.windowId !== windowId) continue;
+      clearTimeout(request.timeout);
+      request.callback(false);
+      this.#permissionRequests.delete(requestId);
+    }
   }
 
   async executeScript(id: string, script: string): Promise<unknown> {
@@ -309,6 +337,35 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     contents.on("render-process-gone", (_event, details) => {
       this.#replaceTab(id, { loading: false });
       this.#emitUpdate(id, `A página foi encerrada (${details.reason}).`);
+    });
+  }
+
+  #installPermissionHandler(session: Session): void {
+    if (this.#permissionSessions.has(session)) return;
+    this.#permissionSessions.add(session);
+    session.setPermissionRequestHandler((contents, permission, callback) => {
+      const surfaceEntry = [...this.#surfaces.entries()].find(([, surface]) =>
+        surface.view.webContents.id === contents.id
+      );
+      const windowId = surfaceEntry ? this.#tabWindows.get(surfaceEntry[0]) : undefined;
+      const host = windowId ? this.windows.get(windowId) : undefined;
+      if (!windowId || !host || host.webContents.isDestroyed()) {
+        callback(false);
+        return;
+      }
+      let origin: string;
+      try { origin = new URL(contents.getURL()).origin; }
+      catch { callback(false); return; }
+      const id = randomUUID();
+      const timeout = setTimeout(() => {
+        const pending = this.#permissionRequests.get(id);
+        if (!pending) return;
+        this.#permissionRequests.delete(id);
+        pending.callback(false);
+      }, 30_000);
+      this.#permissionRequests.set(id, { windowId, callback, timeout });
+      const request: BrowserPermissionRequest = { id, origin, permission };
+      host.webContents.send("browser:permission-requested", request);
     });
   }
 

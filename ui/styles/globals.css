@@ -263,9 +263,20 @@ body { background: var(--moon-bg); color: var(--moon-text); font-family: Inter, 
 .moon-custom-form .moon-primary-button { flex: 0 0 auto; margin: 0; width: auto; }
 .moon-settings-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .moon-settings-list-row { align-items: center; background: #ffffff04; border: 1px solid #ffffff09; border-radius: 8px; display: flex; padding: 7px 8px; }
+.moon-theme-apply { background: transparent; border: 0; color: inherit; display: flex; flex: 1; min-width: 0; padding: 0; text-align: left; }
 .moon-settings-close { align-items: center; background: #ffffff08; border-radius: 8px; color: #8a93a3; display: flex; height: 31px; justify-content: center; position: absolute; right: 14px; top: 14px; width: 31px; }
 .moon-settings-close:hover { background: #ffffff10; color: #fff; }
 .moon-settings-close .moon-icon { height: 14px; width: 14px; }
+.moon-permission-overlay { align-items: center; background: #030407d9; backdrop-filter: blur(12px); display: flex; inset: 0; justify-content: center; padding: 24px; position: fixed; z-index: 120; }
+.moon-permission-prompt { align-items: center; background: #10131b; border: 1px solid #ffffff18; border-radius: 16px; box-shadow: 0 30px 90px #000d; display: flex; flex-direction: column; max-width: 430px; padding: 28px; text-align: center; width: min(430px, calc(100vw - 48px)); }
+.moon-permission-mark { align-items: center; background: var(--moon-user-accent-soft); border: 1px solid color-mix(in srgb, var(--moon-user-accent) 30%, transparent); border-radius: 50%; color: var(--moon-user-accent); display: flex; height: 52px; justify-content: center; margin-bottom: 16px; width: 52px; }
+.moon-permission-mark .moon-icon { height: 25px; width: 25px; }
+.moon-permission-prompt h2 { color: #f1f3f8; font-size: 19px; margin: 0 0 8px; }
+.moon-permission-prompt p { color: #b2b9c5; font-size: 12px; line-height: 1.55; margin: 0; overflow-wrap: anywhere; }
+.moon-permission-prompt small { color: #687284; font-size: 9px; margin-top: 9px; }
+.moon-permission-actions { display: grid; gap: 9px; grid-template-columns: 1fr 1fr; margin-top: 22px; width: 100%; }
+.moon-permission-actions .moon-primary-button, .moon-permission-actions .moon-secondary-button { margin: 0; width: 100%; }
+.moon-permission-actions button:disabled { cursor: wait; opacity: .55; }
 @keyframes moon-spin { to { transform: rotate(360deg); } }
 @media (max-width: 800px) {
   .moon-browser-shell { grid-template-columns: 46px 0 minmax(0, 1fr); }

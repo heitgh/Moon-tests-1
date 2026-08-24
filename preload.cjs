@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("moonBrowser", Object.freeze({
   stop: tabId => invoke("browser:stop", { tabId }),
   setBounds: bounds => invoke("browser:set-bounds", bounds),
   setContentVisible: visible => invoke("browser:set-content-visible", { visible }),
+  respondToPermission: (requestId, granted) => invoke("browser:respond-permission", { requestId, granted }),
   getDownloads: () => invoke("download:list"),
   pauseDownload: id => invoke("download:pause", { id }),
   resumeDownload: id => invoke("download:resume", { id }),
@@ -38,5 +39,6 @@ contextBridge.exposeInMainWorld("moonBrowser", Object.freeze({
   onTabUpdated: listener => subscribe("browser:tab-updated", listener),
   onTabClosed: listener => subscribe("browser:tab-closed", listener),
   onDownloadsUpdated: listener => subscribe("download:updated", listener),
-  onAdblockStatus: listener => subscribe("adblock:status", listener)
+  onAdblockStatus: listener => subscribe("adblock:status", listener),
+  onPermissionRequested: listener => subscribe("browser:permission-requested", listener)
 }));

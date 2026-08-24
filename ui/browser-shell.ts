@@ -17,6 +17,7 @@ interface Bridge {
   stop(tabId: string): Promise<void>;
   setBounds(bounds: { x: number; y: number; width: number; height: number }): Promise<void>;
   setContentVisible(visible: boolean): Promise<void>;
+  respondToPermission(requestId: string, granted: boolean): Promise<void>;
   getDownloads(): Promise<readonly ManagedDownload[]>;
   pauseDownload(id: string): Promise<void>;
   resumeDownload(id: string): Promise<void>;
@@ -32,17 +33,20 @@ interface Bridge {
   onTabClosed(listener: (event: { readonly tabId: string }) => void): () => void;
   onDownloadsUpdated(listener: (downloads: readonly ManagedDownload[]) => void): () => void;
   onAdblockStatus(listener: (status: AdblockStatus) => void): () => void;
+  onPermissionRequested(listener: (request: PermissionRequest) => void): () => void;
 }
 interface Workspace { readonly id: string; readonly name: string; }
 interface SavedLink { readonly id: string; readonly title: string; readonly url: string; readonly time: number; }
 interface Shortcut { readonly id: string; readonly name: string; readonly url: string; }
+interface SavedTheme { readonly id: string; readonly name: string; readonly accent: string; readonly wallpaper: string; readonly glassHome: boolean; }
 type SearchEngine = "duckduckgo" | "google" | "brave";
 interface Preferences { readonly accent: string; readonly wallpaper: string; readonly searchEngine: SearchEngine; readonly showClock: boolean; readonly showShortcuts: boolean; readonly glassHome: boolean; }
 interface ManagedDownload { readonly id: string; readonly url: string; readonly filename: string; readonly savePath: string; readonly state: "in-progress" | "paused" | "completed" | "cancelled" | "failed"; readonly receivedBytes: number; readonly totalBytes: number; readonly speedBytesPerSecond: number; readonly percentage: number | null; readonly startedAt: number; readonly completedAt?: number; }
 interface AdblockStatus { readonly phase: "loading" | "active" | "disabled" | "failed"; readonly enabled: boolean; readonly blockedCount: number; readonly error?: string; }
+interface PermissionRequest { readonly id: string; readonly origin: string; readonly permission: string; }
 type Drawer = "workspaces" | "bookmarks" | "downloads" | "history" | "translate" | "notes" | "extensions" | "ai" | "security";
 
-const KEYS = { bookmarks: "moon:bookmarks:v1", history: "moon:history:v1", preferences: "moon:preferences:v1", workspaces: "moon:workspaces:v1", notes: "moon:notes:v1", shortcuts: "moon:shortcuts:v1" } as const;
+const KEYS = { bookmarks: "moon:bookmarks:v1", history: "moon:history:v1", preferences: "moon:preferences:v1", workspaces: "moon:workspaces:v1", notes: "moon:notes:v1", shortcuts: "moon:shortcuts:v1", themes: "moon:themes:v1", adblock: "moon:adblock-enabled:v1" } as const;
 const WORKSPACES: readonly Workspace[] = [{ id: "research", name: "Pesquisa" }, { id: "study", name: "Estudos" }, { id: "projects", name: "Projetos" }];
 const DEFAULTS: Preferences = {
   accent: "#8a5cf5",
@@ -73,8 +77,8 @@ const ICONS = {
   sparkles: '<path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2Z"/><path d="m19 14 .8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8Z"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>', globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>',
-  palette: '<path d="M12 3a9 9 0 0 0 0 18h1.5a1.5 1.5 0 0 0 0-3H13a2 2 0 0 1 0-4h2a6 6 0 0 0 0-11Z"/><circle cx="8" cy="10" r=".6"/><circle cx="10" cy="7" r=".6"/><circle cx="14" cy="7" r=".6"/>'
-  ,download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/>',
+  palette: '<path d="M12 3a9 9 0 0 0 0 18h1.5a1.5 1.5 0 0 0 0-3H13a2 2 0 0 1 0-4h2a6 6 0 0 0 0-11Z"/><circle cx="8" cy="10" r=".6"/><circle cx="10" cy="7" r=".6"/><circle cx="14" cy="7" r=".6"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/>',
   note: '<path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
   translate: '<path d="M4 5h9M8.5 3v2M6 8c1 3 3 5 6 6M12 8c-1 3-3 5-6 6"/><path d="m14 21 4-10 4 10M15.5 17h5"/>',
   plugin: '<path d="M8 3h3a2 2 0 1 0 4 0h3v5a2 2 0 1 1 0 4v5h-5a2 2 0 1 1-4 0H4v-5a2 2 0 1 0 0-4V3Z"/>',
@@ -118,12 +122,16 @@ class BrowserShell {
   #downloads: readonly ManagedDownload[] = [];
   #notes = load<string>(KEYS.notes, "");
   #shortcuts = load<Shortcut[]>(KEYS.shortcuts, []);
+  #themes = load<SavedTheme[]>(KEYS.themes, []);
   #adblock: AdblockStatus = { phase: "loading", enabled: true, blockedCount: 0 };
   #preferences = { ...DEFAULTS, ...load<Partial<Preferences>>(KEYS.preferences, {}) };
   #workspaceId = this.#workspaces[0]?.id ?? "research";
   #activeTabId: string | undefined;
   #openDrawer: Drawer | undefined;
   #settings: HTMLElement | undefined;
+  #permissionPrompt: HTMLElement | undefined;
+  #activePermission: PermissionRequest | undefined;
+  readonly #permissionQueue: PermissionRequest[] = [];
   #resizeObserver: ResizeObserver | undefined;
 
   constructor(readonly container: HTMLElement) {}
@@ -135,9 +143,14 @@ class BrowserShell {
     this.#bridge.onTabClosed(({ tabId }) => { void this.#handleClosed(tabId); });
     this.#bridge.onDownloadsUpdated(downloads => { this.#downloads = downloads; this.#renderDrawer(); });
     this.#bridge.onAdblockStatus(status => { this.#adblock = status; this.#renderAdblock(); this.#renderDrawer(); });
+    this.#bridge.onPermissionRequested(request => this.#enqueuePermissionPrompt(request));
     try {
       this.#downloads = await this.#bridge.getDownloads();
       this.#adblock = await this.#bridge.getAdblockStatus();
+      const preferredAdblock = load<boolean>(KEYS.adblock, true);
+      if (this.#adblock.enabled !== preferredAdblock) {
+        this.#adblock = await this.#bridge.setAdblockEnabled(preferredAdblock);
+      }
       const tabs = await this.#bridge.getTabs();
       tabs.forEach(tab => this.#tabs.set(tab.id, tab));
       const active = tabs.find(tab => tab.active);
@@ -334,11 +347,12 @@ class BrowserShell {
   #securityDrawer(): void {
     const hero = el("div", "moon-security-hero"); hero.append(svg("shield"), el("strong", "", "Navegação isolada"), el("span", "", "ATIVA"));
     const adblock = el("div", "moon-adblock-control"); const copy = el("span", "moon-list-copy"); copy.append(el("strong", "", "Moon AdBlock"), el("small", "", this.#adblockDetail()));
-    const toggle = btn(`moon-adblock-toggle${this.#adblock.enabled ? " is-active" : ""}`, this.#adblock.enabled ? "Desativar AdBlock" : "Ativar AdBlock"); toggle.append(el("span")); toggle.disabled = this.#adblock.phase === "loading" || this.#adblock.phase === "failed"; toggle.addEventListener("click", () => void this.#bridge?.setAdblockEnabled(!this.#adblock.enabled)); adblock.append(copy, toggle);
+    const toggle = btn(`moon-adblock-toggle${this.#adblock.enabled ? " is-active" : ""}`, this.#adblock.enabled ? "Desativar AdBlock" : "Ativar AdBlock"); toggle.append(el("span")); toggle.disabled = this.#adblock.phase === "loading" || this.#adblock.phase === "failed"; toggle.addEventListener("click", () => void this.#setAdblockEnabled(!this.#adblock.enabled)); adblock.append(copy, toggle);
     const list = el("div", "moon-security-list");
     [["Context isolation", "A página não acessa APIs internas do Moon."], ["Sandbox", "Sites executam em processos restritos do Chromium."], ["Navegação", "Somente HTTP e HTTPS são aceitos."], ["Workspaces", "Cada espaço usa uma sessão separada."]].forEach(([title, detail]) => { const item = el("div", "moon-security-item"); item.append(el("span", "moon-check", "✓"), el("strong", "", title), el("p", "", detail)); list.append(item); }); this.#drawerBody.append(hero, adblock, list);
   }
   #renderAdblock(): void { this.#securityPill.classList.toggle("is-disabled", this.#adblock.phase === "disabled" || this.#adblock.phase === "failed"); this.#securityPill.classList.toggle("is-loading", this.#adblock.phase === "loading"); this.#securityText.textContent = this.#adblock.phase === "loading" ? "AdBlock carregando" : this.#adblock.phase === "failed" ? "AdBlock indisponível" : this.#adblock.enabled ? `${this.#adblock.blockedCount} bloqueados` : "AdBlock desligado"; }
+  async #setAdblockEnabled(enabled: boolean): Promise<void> { if (!this.#bridge) return; this.#adblock = await this.#bridge.setAdblockEnabled(enabled); save(KEYS.adblock, enabled); this.#renderAdblock(); this.#renderDrawer(); }
   #adblockDetail(): string { if (this.#adblock.phase === "loading") return "Carregando filtros reais…"; if (this.#adblock.phase === "failed") return `Falhou: ${this.#adblock.error ?? "erro desconhecido"}`; return this.#adblock.enabled ? `${this.#adblock.blockedCount} requisições bloqueadas nesta sessão` : "Proteção de anúncios desativada"; }
   #downloadAction(label: string, name: IconName, action: () => void): HTMLButtonElement { const actionButton = btn("moon-download-action", label, name); actionButton.append(el("span", "", label)); actionButton.addEventListener("click", action); return actionButton; }
   #downloadStateLabel(state: ManagedDownload["state"]): string { return ({ "in-progress": "Baixando", paused: "Pausado", completed: "Concluído", cancelled: "Cancelado", failed: "Falhou" })[state]; }
@@ -352,6 +366,7 @@ class BrowserShell {
     const close = btn("moon-settings-close", "Fechar configurações", "close"); close.addEventListener("click", () => void this.#closeSettings());
     const appearance = this.#settingsPage("Aparência", "Personalize o Moon sem sacrificar legibilidade."); const accentGroup = this.#settingGroup("Cor de destaque", "Usada nos controles ativos e indicadores."); const accentGrid = el("div", "moon-accent-grid"); ACCENTS.forEach((accent, index) => { const accentButton = btn(`moon-accent-swatch moon-accent-swatch-${index}${accent === this.#preferences.accent ? " is-active" : ""}`, `Usar cor ${accent}`); accentButton.addEventListener("click", () => { this.#updatePreferences({ accent }); accentGrid.querySelectorAll(".moon-accent-swatch").forEach(item => item.classList.remove("is-active")); accentButton.classList.add("is-active"); }); accentGrid.append(accentButton); }); accentGroup.append(accentGrid);
     const wallpaperGroup = this.#settingGroup("Wallpaper", "Escolha o fundo da página inicial."); const gallery = el("div", "moon-wallpaper-grid"); WALLPAPERS.forEach((url, index) => { const card = btn(`moon-wallpaper moon-wallpaper-preview-${index}${url === this.#preferences.wallpaper ? " is-active" : ""}`, "Selecionar wallpaper"); const preview = el("img", "moon-wallpaper-image"); preview.src = url; preview.alt = ""; card.append(preview); card.addEventListener("click", () => { this.#updatePreferences({ wallpaper: url }); gallery.querySelectorAll(".moon-wallpaper").forEach(item => item.classList.remove("is-active")); card.classList.add("is-active"); }); gallery.append(card); }); const customWallpaper = el("div", "moon-custom-form"); const wallpaperUrl = el("input", "moon-settings-input"); wallpaperUrl.type = "url"; wallpaperUrl.placeholder = "https://…"; const applyWallpaper = btn("moon-primary-button", "Aplicar wallpaper por URL", "plus"); applyWallpaper.append(el("span", "", "Aplicar URL")); applyWallpaper.addEventListener("click", () => { const url = wallpaperUrl.value.trim(); if (url.startsWith("https://")) this.#updatePreferences({ wallpaper: url }); else this.#flash("Use uma URL HTTPS válida."); }); customWallpaper.append(wallpaperUrl, applyWallpaper); wallpaperGroup.append(gallery, customWallpaper); appearance.append(accentGroup, wallpaperGroup);
+    const themeGroup = this.#settingGroup("Temas salvos", "Guarde combinações de cor, wallpaper e painel."); const themeForm = el("div", "moon-custom-form"); const themeName = el("input", "moon-settings-input"); themeName.placeholder = "Nome do tema"; const saveTheme = btn("moon-primary-button", "Salvar tema atual", "plus"); saveTheme.append(el("span", "", "Salvar tema")); const themeList = el("div", "moon-settings-list"); const renderThemes = (): void => { themeList.replaceChildren(); this.#themes.forEach(theme => { const row = el("div", "moon-settings-list-row"); const apply = btn("moon-theme-apply", `Aplicar ${theme.name}`); const copy = el("span", "moon-list-copy"); copy.append(el("strong", "", theme.name), el("small", "", "Cor, wallpaper e estilo da home")); apply.append(copy); apply.addEventListener("click", () => this.#updatePreferences({ accent: theme.accent, wallpaper: theme.wallpaper, glassHome: theme.glassHome })); const remove = btn("moon-icon-button", `Excluir ${theme.name}`, "trash"); remove.addEventListener("click", () => { this.#themes = this.#themes.filter(item => item.id !== theme.id); save(KEYS.themes, this.#themes); renderThemes(); }); row.append(apply, remove); themeList.append(row); }); }; saveTheme.addEventListener("click", () => { const name = themeName.value.trim() || `Tema ${this.#themes.length + 1}`; this.#themes = [...this.#themes, { id: crypto.randomUUID(), name, accent: this.#preferences.accent, wallpaper: this.#preferences.wallpaper, glassHome: this.#preferences.glassHome }]; save(KEYS.themes, this.#themes); themeName.value = ""; renderThemes(); }); themeForm.append(themeName, saveTheme); renderThemes(); themeGroup.append(themeForm, themeList); appearance.append(themeGroup);
     const searchPage = this.#settingsPage("Pesquisa", "Escolha o motor das consultas na barra de endereço."); const searchGroup = this.#settingGroup("Motor de busca", "Endereços digitados diretamente continuam abrindo o site."); const select = el("select", "moon-select"); [["duckduckgo", "DuckDuckGo"], ["google", "Google"], ["brave", "Brave Search"]].forEach(([value, label]) => { const option = el("option", "", label); option.value = value!; option.selected = value === this.#preferences.searchEngine; select.append(option); }); select.addEventListener("change", () => this.#updatePreferences({ searchEngine: select.value as SearchEngine })); searchGroup.append(select); searchPage.append(searchGroup);
     const homePage = this.#settingsPage("Página inicial", "Controle o conteúdo de uma nova aba."); const options = this.#settingGroup("Elementos", "As alterações são aplicadas imediatamente."); options.append(this.#toggleSetting("Mostrar relógio e data", this.#preferences.showClock, checked => this.#updatePreferences({ showClock: checked })), this.#toggleSetting("Mostrar atalhos rápidos", this.#preferences.showShortcuts, checked => this.#updatePreferences({ showShortcuts: checked })), this.#toggleSetting("Usar painel de vidro", this.#preferences.glassHome, checked => this.#updatePreferences({ glassHome: checked })));
     const shortcutGroup = this.#settingGroup("Atalhos personalizados", "Adicione sites à página inicial."); const shortcutForm = el("div", "moon-custom-form"); const shortcutName = el("input", "moon-settings-input"); shortcutName.placeholder = "Nome"; const shortcutUrl = el("input", "moon-settings-input"); shortcutUrl.placeholder = "https://site.com"; const addShortcut = btn("moon-primary-button", "Adicionar atalho", "plus"); addShortcut.append(el("span", "", "Adicionar")); const shortcutList = el("div", "moon-settings-list"); const renderShortcutList = (): void => { shortcutList.replaceChildren(); this.#shortcuts.forEach(item => { const row = el("div", "moon-settings-list-row"); const copy = el("span", "moon-list-copy"); copy.append(el("strong", "", item.name), el("small", "", item.url)); const remove = btn("moon-icon-button", `Excluir ${item.name}`, "trash"); remove.addEventListener("click", () => { this.#shortcuts = this.#shortcuts.filter(shortcut => shortcut.id !== item.id); save(KEYS.shortcuts, this.#shortcuts); this.#renderHomeShortcuts(); renderShortcutList(); }); row.append(copy, remove); shortcutList.append(row); }); }; addShortcut.addEventListener("click", () => { const name = shortcutName.value.trim(); const url = shortcutUrl.value.trim(); if (!name || !url.startsWith("https://")) return this.#flash("Informe um nome e uma URL HTTPS."); this.#shortcuts = [...this.#shortcuts, { id: crypto.randomUUID(), name, url }]; save(KEYS.shortcuts, this.#shortcuts); shortcutName.value = ""; shortcutUrl.value = ""; this.#renderHomeShortcuts(); renderShortcutList(); }); shortcutForm.append(shortcutName, shortcutUrl, addShortcut); renderShortcutList(); shortcutGroup.append(shortcutForm, shortcutList);
@@ -359,13 +374,44 @@ class BrowserShell {
     const dataPage = this.#settingsPage("Dados e backup", "Exporte ou restaure os dados locais do seu perfil."); const dataGroup = this.#settingGroup("Backup do perfil", "Inclui favoritos, histórico, notas, workspaces e preferências. Senhas e cookies não são exportados."); const dataActions = el("div", "moon-settings-actions"); const exportButton = btn("moon-primary-button", "Exportar backup", "download"); exportButton.append(el("span", "", "Exportar backup")); exportButton.addEventListener("click", () => void this.#exportData()); const importButton = btn("moon-secondary-button", "Importar backup", "folder"); importButton.append(el("span", "", "Importar backup")); importButton.addEventListener("click", () => void this.#importData()); dataActions.append(exportButton, importButton); dataGroup.append(dataActions); dataPage.append(dataGroup);
     pages.set("appearance", appearance); pages.set("search", searchPage); pages.set("home", homePage); pages.set("data", dataPage); searchPage.hidden = true; homePage.hidden = true; dataPage.hidden = true; body.append(appearance, searchPage, homePage, dataPage); modal.append(sidebar, body, close); overlay.append(modal); overlay.addEventListener("click", event => { if (event.target === overlay) void this.#closeSettings(); }); this.#settings = overlay; this.container.append(overlay); this.#rail.get("settings")?.classList.add("is-active");
   }
-  async #closeSettings(): Promise<void> { this.#settings?.remove(); this.#settings = undefined; this.#rail.get("settings")?.classList.remove("is-active"); if (this.#bridge) await this.#bridge.setContentVisible(true); requestAnimationFrame(() => this.#syncBounds()); }
+  async #closeSettings(): Promise<void> { this.#settings?.remove(); this.#settings = undefined; this.#rail.get("settings")?.classList.remove("is-active"); if (this.#bridge && !this.#permissionPrompt) await this.#bridge.setContentVisible(true); requestAnimationFrame(() => this.#syncBounds()); }
+  #enqueuePermissionPrompt(request: PermissionRequest): void {
+    this.#permissionQueue.push(request);
+    void this.#showNextPermissionPrompt();
+  }
+  async #showNextPermissionPrompt(): Promise<void> {
+    if (!this.#bridge || this.#activePermission) return;
+    const request = this.#permissionQueue.shift();
+    if (!request) return;
+    this.#activePermission = request;
+    await this.#bridge.setContentVisible(false);
+    const overlay = el("div", "moon-permission-overlay");
+    const prompt = el("section", "moon-permission-prompt");
+    prompt.setAttribute("role", "alertdialog");
+    prompt.setAttribute("aria-modal", "true");
+    const mark = el("div", "moon-permission-mark"); mark.append(svg("shield"));
+    const names: Readonly<Record<string, string>> = { media: "câmera ou microfone", camera: "câmera", microphone: "microfone", notifications: "notificações", geolocation: "localização", midi: "dispositivos MIDI", fullscreen: "tela cheia", "display-capture": "captura de tela" };
+    prompt.append(mark, el("h2", "", "Permissão do site"), el("p", "", `${request.origin} quer acessar ${names[request.permission] ?? request.permission}.`), el("small", "", "O Moon negará automaticamente se você não responder."));
+    const actions = el("div", "moon-permission-actions");
+    const deny = btn("moon-secondary-button", "Negar permissão"); deny.append(el("span", "", "Negar"));
+    const allow = btn("moon-primary-button", "Permitir acesso"); allow.append(el("span", "", "Permitir"));
+    const respond = async (granted: boolean): Promise<void> => {
+      deny.disabled = true; allow.disabled = true;
+      try { await this.#bridge!.respondToPermission(request.id, granted); }
+      catch (error) { this.#showError(error); }
+      overlay.remove(); this.#permissionPrompt = undefined; this.#activePermission = undefined;
+      if (this.#permissionQueue.length > 0) await this.#showNextPermissionPrompt();
+      else if (!this.#settings) await this.#bridge!.setContentVisible(true);
+    };
+    deny.addEventListener("click", () => void respond(false)); allow.addEventListener("click", () => void respond(true));
+    actions.append(deny, allow); prompt.append(actions); overlay.append(prompt); this.#permissionPrompt = overlay; this.container.append(overlay);
+  }
   #settingsPage(title: string, detail: string): HTMLElement { const page = el("section", "moon-settings-page"); page.append(el("h1", "", title), el("p", "moon-settings-intro", detail)); return page; }
   #settingGroup(title: string, detail: string): HTMLElement { const group = el("div", "moon-setting-group"); group.append(el("h3", "", title), el("p", "", detail)); return group; }
   #toggleSetting(label: string, checked: boolean, change: (checked: boolean) => void): HTMLElement { const row = el("label", "moon-toggle-row"); const input = el("input"); input.type = "checkbox"; input.checked = checked; input.addEventListener("change", () => change(input.checked)); row.append(el("span", "", label), input, el("span", "moon-toggle-control")); return row; }
   #updatePreferences(patch: Partial<Preferences>): void { this.#preferences = { ...this.#preferences, ...patch }; save(KEYS.preferences, this.#preferences); this.#applyPreferences(); }
-  async #exportData(): Promise<void> { if (!this.#bridge) return; const content = JSON.stringify({ format: "moon-profile", version: 1, exportedAt: new Date().toISOString(), bookmarks: this.#bookmarks, history: this.#history, notes: this.#notes, shortcuts: this.#shortcuts, workspaces: this.#workspaces, preferences: this.#preferences }, null, 2); const exported = await this.#bridge.exportProductData(content); this.#flash(exported ? "Backup exportado com sucesso." : "Exportação cancelada."); }
-  async #importData(): Promise<void> { if (!this.#bridge) return; try { const content = await this.#bridge.importProductData(); if (!content) return; const data = JSON.parse(content) as Partial<{ format: string; bookmarks: SavedLink[]; history: SavedLink[]; notes: string; shortcuts: Shortcut[]; workspaces: Workspace[]; preferences: Preferences }>; if (data.format !== "moon-profile") throw new Error("Arquivo não é um backup válido do Moon"); if (Array.isArray(data.bookmarks)) this.#bookmarks = data.bookmarks; if (Array.isArray(data.history)) this.#history = data.history.slice(0, 500); if (typeof data.notes === "string") this.#notes = data.notes; if (Array.isArray(data.shortcuts)) this.#shortcuts = data.shortcuts; if (Array.isArray(data.workspaces) && data.workspaces.length > 0) this.#workspaces = data.workspaces; if (data.preferences && typeof data.preferences === "object") this.#preferences = { ...DEFAULTS, ...data.preferences }; save(KEYS.bookmarks, this.#bookmarks); save(KEYS.history, this.#history); save(KEYS.notes, this.#notes); save(KEYS.shortcuts, this.#shortcuts); save(KEYS.workspaces, this.#workspaces); save(KEYS.preferences, this.#preferences); this.#renderHomeShortcuts(); this.#applyPreferences(); this.#render(); this.#flash("Backup restaurado com sucesso."); await this.#closeSettings(); } catch (error) { this.#showError(error); } }
+  async #exportData(): Promise<void> { if (!this.#bridge) return; const content = JSON.stringify({ format: "moon-profile", version: 1, exportedAt: new Date().toISOString(), bookmarks: this.#bookmarks, history: this.#history, notes: this.#notes, shortcuts: this.#shortcuts, themes: this.#themes, workspaces: this.#workspaces, preferences: this.#preferences }, null, 2); const exported = await this.#bridge.exportProductData(content); this.#flash(exported ? "Backup exportado com sucesso." : "Exportação cancelada."); }
+  async #importData(): Promise<void> { if (!this.#bridge) return; try { const content = await this.#bridge.importProductData(); if (!content) return; const data = JSON.parse(content) as Partial<{ format: string; bookmarks: SavedLink[]; history: SavedLink[]; notes: string; shortcuts: Shortcut[]; themes: SavedTheme[]; workspaces: Workspace[]; preferences: Preferences }>; if (data.format !== "moon-profile") throw new Error("Arquivo não é um backup válido do Moon"); if (Array.isArray(data.bookmarks)) this.#bookmarks = data.bookmarks; if (Array.isArray(data.history)) this.#history = data.history.slice(0, 500); if (typeof data.notes === "string") this.#notes = data.notes; if (Array.isArray(data.shortcuts)) this.#shortcuts = data.shortcuts; if (Array.isArray(data.themes)) this.#themes = data.themes; if (Array.isArray(data.workspaces) && data.workspaces.length > 0) this.#workspaces = data.workspaces; if (data.preferences && typeof data.preferences === "object") this.#preferences = { ...DEFAULTS, ...data.preferences }; save(KEYS.bookmarks, this.#bookmarks); save(KEYS.history, this.#history); save(KEYS.notes, this.#notes); save(KEYS.shortcuts, this.#shortcuts); save(KEYS.themes, this.#themes); save(KEYS.workspaces, this.#workspaces); save(KEYS.preferences, this.#preferences); this.#renderHomeShortcuts(); this.#applyPreferences(); this.#render(); this.#flash("Backup restaurado com sucesso."); await this.#closeSettings(); } catch (error) { this.#showError(error); } }
   #applyPreferences(): void { const root = document.documentElement; for (let index = 0; index < ACCENTS.length; index += 1) root.classList.toggle(`moon-accent-${index}`, ACCENTS[index] === this.#preferences.accent); this.#wallpaperImage.src = this.#preferences.wallpaper; this.#clock.hidden = !this.#preferences.showClock; this.#date.hidden = !this.#preferences.showClock; this.#homeShortcuts.toggleAttribute("hidden", !this.#preferences.showShortcuts); this.#home.querySelector<HTMLElement>(".moon-home-panel")?.classList.toggle("is-card", this.#preferences.glassHome); }
 
   #startClock(): void { const update = (): void => { const now = new Date(); this.#clock.textContent = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(now); this.#date.textContent = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" }).format(now); }; update(); window.setInterval(update, 30_000); }
