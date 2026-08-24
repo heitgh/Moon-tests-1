@@ -1,0 +1,122 @@
+{
+  "name": "moon-browser",
+  "version": "0.1.0",
+  "description": "Moon Browser — intelligent, contextual and productivity-focused web browser.",
+  "desktopName": "moon-browser.desktop",
+  "private": true,
+  "author": {
+    "name": "Heitgh",
+    "email": "207310826+heitgh@users.noreply.github.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/heitgh/Moon-browser",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heitgh/Moon-browser.git"
+  },
+  "bugs": {
+    "url": "https://github.com/heitgh/Moon-browser/issues"
+  },
+  "type": "module",
+  "main": "main.js",
+  "workspaces": [
+    "apps/desktop",
+    "apps/mobile",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "npm run dev:desktop",
+    "dev:desktop": "tsx scripts/development/dev.ts",
+    "dev:mobile": "tsx scripts/build/build-mobile.ts",
+    "compile": "tsc --project tsconfig.build.json",
+    "build": "npm run build:desktop",
+    "build:desktop": "tsx scripts/build/build-desktop.ts",
+    "build:mobile": "tsx scripts/build/build-mobile.ts",
+    "start": "npm run compile && electron .",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "playwright test tests/e2e",
+    "db:migrate": "tsx scripts/database/migrate.ts",
+    "db:seed": "tsx scripts/database/seed.ts",
+    "db:backup": "tsx scripts/database/backup.ts",
+    "extensions:validate": "tsx scripts/extensions/validate-extension.ts",
+    "extensions:package": "tsx scripts/extensions/package-extension.ts",
+    "clean": "tsx scripts/development/clean.ts",
+    "reset": "tsx scripts/development/reset.ts",
+    "prepare": "npm run typecheck"
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron": "^2.11.3",
+    "cross-fetch": "^4.1.0",
+    "electron-store": "^10.1.0",
+    "better-sqlite3": "^12.4.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.40.0",
+    "@typescript-eslint/parser": "^8.40.0",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.6.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  },
+  "build": {
+    "appId": "com.moon.browser",
+    "productName": "Moon Browser",
+    "artifactName": "Moon-Browser-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "apps/**",
+      "packages/**",
+      "ui/**",
+      "assets/**",
+      "config/**",
+      "extensions/**",
+      "plugins/**",
+      "database/**",
+      "preload.js",
+      "preload.cjs",
+      "main.js",
+      "index.html",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Network"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities"
+    }
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.28.2": true
+  }
+}

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+release/
+coverage/
+.env
+*.log
+database/*.db
+database/*.db-shm
+database/*.db-wal
+database/backups/
+*.AppImage
+*.deb
+*.dmg
+*.exe
+.DS_Store

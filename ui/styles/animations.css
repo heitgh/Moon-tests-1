@@ -1,0 +1,5 @@
+@keyframes moon-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.moon-content > * { animation: moon-fade-in var(--moon-motion-normal) ease-out; }
+button, input, select, textarea { transition: border-color var(--moon-motion-fast), background-color var(--moon-motion-fast), transform var(--moon-motion-fast); }
+button:active { transform: scale(.98); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; } }

@@ -1,0 +1,21 @@
+:root {
+  color-scheme: dark;
+  --moon-bg: #0b0d12;
+  --moon-surface: #141720;
+  --moon-surface-raised: #1b1f2a;
+  --moon-text: #f4f5f8;
+  --moon-text-muted: #a6adbb;
+  --moon-accent: #8b72ff;
+  --moon-danger: #ff647c;
+  --moon-border: color-mix(in srgb, var(--moon-text) 12%, transparent);
+  --moon-radius-sm: 8px;
+  --moon-radius-md: 14px;
+  --moon-radius-lg: 22px;
+  --moon-space-1: .25rem;
+  --moon-space-2: .5rem;
+  --moon-space-3: .75rem;
+  --moon-space-4: 1rem;
+  --moon-space-6: 1.5rem;
+  --moon-motion-fast: 120ms;
+  --moon-motion-normal: 220ms;
+}

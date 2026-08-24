@@ -1,0 +1,2 @@
+export type LayoutDensity = "comfortable" | "compact" | "touch";
+export class LayoutEditor { readonly element = document.createElement("select"); constructor(readonly onChange: (density: LayoutDensity) => void) { for (const [value,label] of [["comfortable","Confortável"],["compact","Compacto"],["touch","Toque"]] as const) this.element.add(new Option(label,value)); this.element.addEventListener("change", () => this.onChange(this.element.value as LayoutDensity)); } }
