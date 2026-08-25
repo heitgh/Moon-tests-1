@@ -1,2 +1,0 @@
-import type { HomeWidget } from "../home-widgets.js";
-export function createDateWidget(locale = navigator.language): HomeWidget { const element = document.createElement("time"); element.className = "home-widget home-widget--date"; const refresh = () => { const now = new Date(); element.dateTime = now.toISOString().slice(0,10); element.textContent = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(now); }; refresh(); return { id: "date", title: "Data", element, refresh }; }

@@ -3,7 +3,10 @@ import type { ElectronDownloadManager } from "../services/download-manager.js";
 import type { IpcRouter } from "./ipc-router.js";
 import { dialog } from "electron";
 import { readFile, writeFile } from "node:fs/promises";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { parseMoonProfileBackup } from "../../../../packages/storage/backup/profile-backup.js";
+import { createDefaultCustomization, parseCustomizationImport } from "../../../../ui/customization/customization-schema.js";
 import type { ProfileStorage } from "../services/profile-storage.js";
 
 interface IdPayload { readonly id: string; }
@@ -63,10 +66,58 @@ export function registerProductIpc(
     const content = await readFile(path, "utf8");
     return JSON.stringify(parseMoonProfileBackup(content));
   });
+  router.register("product:export-customization", async (_event, payload?: { readonly content?: string }) => {
+    if (!payload || typeof payload.content !== "string" || payload.content.length > 2_000_000) throw new TypeError("Invalid customization export");
+    parseCustomizationImport(payload.content, createDefaultCustomization());
+    const canonicalContent = JSON.stringify(JSON.parse(payload.content) as unknown, null, 2);
+    const result = await dialog.showSaveDialog({ title: "Exportar personalização do Moon", defaultPath: `moon-personalizacao-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: "Moon Customization", extensions: ["json"] }] });
+    if (result.canceled || !result.filePath) return false;
+    await writeFile(result.filePath, canonicalContent, { encoding: "utf8", mode: 0o600 }); return true;
+  });
+  router.register("product:import-customization", async () => {
+    const result = await dialog.showOpenDialog({ title: "Importar personalização do Moon", properties: ["openFile"], filters: [{ name: "Moon Customization", extensions: ["json"] }] });
+    const path = result.filePaths[0]; if (result.canceled || !path) return null;
+    const content = await readFile(path, "utf8"); parseCustomizationImport(content, createDefaultCustomization()); return content;
+  });
+  router.register("product:fetch-wallpaper", async (_event, payload?: { readonly url?: string }) => {
+    if (!payload || typeof payload.url !== "string" || payload.url.length > 2_048) throw new TypeError("Invalid wallpaper URL");
+    return fetchSafeWallpaper(payload.url);
+  });
   router.register("product:migrate-legacy-profile", (_event, payload?: { readonly content?: string }) => {
     if (!payload || typeof payload.content !== "string" || payload.content.length > 5_000_000) {
       throw new TypeError("Invalid legacy profile content");
     }
     return profile.migrateLegacyProfile(payload.content);
   });
+}
+
+const MAX_WALLPAPER_BYTES = 1_500_000;
+const WALLPAPER_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+async function fetchSafeWallpaper(input: string): Promise<string> {
+  let url = new URL(input);
+  for (let redirect = 0; redirect <= 3; redirect += 1) {
+    await assertPublicHttpsUrl(url);
+    const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(12_000), headers: { accept: "image/png,image/jpeg,image/webp" } });
+    if (response.status >= 300 && response.status < 400) { const location = response.headers.get("location"); if (!location || redirect === 3) throw new Error("Wallpaper has too many redirects"); url = new URL(location, url); continue; }
+    if (!response.ok) throw new Error(`Wallpaper request failed (${response.status})`);
+    const mime = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase(); if (!mime || !WALLPAPER_TYPES.has(mime)) throw new Error("Wallpaper must be PNG, JPEG or WebP");
+    const declared = Number(response.headers.get("content-length") ?? "0"); if (declared > MAX_WALLPAPER_BYTES) throw new Error("Wallpaper exceeds 1.5 MB");
+    if (!response.body) throw new Error("Wallpaper response has no body");
+    const chunks: Uint8Array[] = []; let total = 0; const reader = response.body.getReader();
+    while (true) { const { done, value } = await reader.read(); if (done) break; if (!value) continue; total += value.byteLength; if (total > MAX_WALLPAPER_BYTES) { await reader.cancel(); throw new Error("Wallpaper exceeds 1.5 MB"); } chunks.push(value); }
+    const bytes = Buffer.concat(chunks.map(chunk => Buffer.from(chunk))); return `data:${mime};base64,${bytes.toString("base64")}`;
+  }
+  throw new Error("Wallpaper could not be loaded");
+}
+
+async function assertPublicHttpsUrl(url: URL): Promise<void> {
+  if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")) throw new Error("Wallpaper URL must use public HTTPS on port 443");
+  const addresses = await lookup(url.hostname, { all: true, verbatim: true }); if (!addresses.length || addresses.some(({ address }) => !isPublicAddress(address))) throw new Error("Private or local wallpaper hosts are not allowed");
+}
+
+function isPublicAddress(address: string): boolean {
+  const version = isIP(address); if (version === 4) { const [a, b] = address.split(".").map(Number); return !(a === 0 || a === 10 || a === 127 || a! >= 224 || (a === 100 && b! >= 64 && b! <= 127) || (a === 169 && b === 254) || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168) || (a === 198 && (b === 18 || b === 19))); }
+  if (version === 6) { const value = address.toLowerCase(); return !(value === "::" || value === "::1" || value.startsWith("fc") || value.startsWith("fd") || /^fe[89ab]/.test(value) || value.startsWith("::ffff:127.") || value.startsWith("::ffff:10.") || value.startsWith("::ffff:192.168.")); }
+  return false;
 }

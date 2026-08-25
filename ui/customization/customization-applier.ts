@@ -11,6 +11,11 @@ export class CustomizationApplier {
     this.#config = config;
     const { appearance, layout, typography, home } = config;
     const resolvedMode = this.#resolveMode(appearance.mode, appearance.schedule.lightAt, appearance.schedule.darkAt);
+    const colors = resolvedMode === "light" ? {
+      ...appearance.colors,
+      background: mix(appearance.colors.background, "#ffffff", .9), surface: mix(appearance.colors.surface, "#ffffff", .92), elevated: mix(appearance.colors.elevated, "#ffffff", .86),
+      text: mix(appearance.colors.text, "#000000", .88), textMuted: mix(appearance.colors.textMuted, "#000000", .62), border: mix(appearance.colors.border, "#000000", .14)
+    } : appearance.colors;
     this.root.dataset.moonTheme = resolvedMode;
     this.root.dataset.moonThemeMode = appearance.mode;
     this.root.dataset.moonDensity = layout.density;
@@ -21,12 +26,16 @@ export class CustomizationApplier {
     this.root.dataset.moonMotion = appearance.motion.enabled ? "on" : "off";
     this.root.dataset.moonGlass = appearance.glass.enabled ? "on" : "off";
     this.root.dataset.moonHomeCards = home.cardStyle;
+    this.root.dataset.moonHomeHorizontal = home.horizontalAlign;
+    this.root.dataset.moonHomeVertical = home.verticalAlign;
+    this.root.dataset.moonStatus = layout.statusBar.visible ? "visible" : "hidden";
+    this.root.dataset.moonSidebarLabels = layout.sidebar.labels;
     this.root.style.colorScheme = resolvedMode;
     const variables: Readonly<Record<string, string>> = {
-      "--moon-user-accent": appearance.colors.accent, "--moon-user-accent-soft": `${appearance.colors.accent}32`,
-      "--moon-bg": appearance.colors.background, "--moon-surface": appearance.colors.surface, "--moon-surface-raised": appearance.colors.elevated,
-      "--moon-text": appearance.colors.text, "--moon-text-muted": appearance.colors.textMuted, "--moon-border": appearance.colors.border,
-      "--moon-success": appearance.colors.success, "--moon-warning": appearance.colors.warning, "--moon-danger": appearance.colors.danger,
+      "--moon-user-accent": colors.accent, "--moon-user-accent-soft": `${colors.accent}32`,
+      "--moon-bg": colors.background, "--moon-surface": colors.surface, "--moon-surface-raised": colors.elevated,
+      "--moon-text": colors.text, "--moon-text-muted": colors.textMuted, "--moon-border": colors.border,
+      "--moon-success": colors.success, "--moon-warning": colors.warning, "--moon-danger": colors.danger,
       "--moon-sidebar-width": `${layout.sidebar.width}px`, "--moon-sidebar-icon": `${layout.sidebar.iconSize}px`, "--moon-sidebar-gap": `${layout.sidebar.spacing}px`,
       "--moon-drawer-width": `${layout.drawer.width}px`, "--moon-toolbar-height": `${layout.toolbar.height}px`, "--moon-ui-scale": String(layout.uiScale),
       "--moon-sidebar-opacity": String(appearance.opacity.sidebar), "--moon-toolbar-opacity": String(appearance.opacity.toolbar), "--moon-card-opacity": String(appearance.opacity.cards),
@@ -66,3 +75,5 @@ export class CustomizationApplier {
     this.#media.addEventListener("change", this.#listener);
   }
 }
+
+function mix(first: string, second: string, ratio: number): string { const channel = (hex: string, index: number): number => Number.parseInt(hex.slice(index, index + 2), 16); const value = [1, 3, 5].map(index => Math.round(channel(first, index) * (1 - ratio) + channel(second, index) * ratio).toString(16).padStart(2, "0")); return `#${value.join("")}`; }

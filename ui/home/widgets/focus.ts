@@ -1,2 +1,0 @@
-import type { HomeWidget } from "../home-widgets.js";
-export function createFocusWidget(onStart: (minutes: number) => void): HomeWidget { const element = document.createElement("section"); element.className = "home-widget home-widget--focus"; const button = document.createElement("button"); button.type = "button"; button.textContent = "Iniciar foco de 25 minutos"; button.addEventListener("click", () => onStart(25)); element.append(button); return { id: "focus", title: "Foco", element }; }

@@ -1,2 +1,0 @@
-import type { MoonThemeMode } from "@moon/ui-core";
-export class ThemeEditor { readonly element = document.createElement("select"); constructor(readonly onChange: (mode: MoonThemeMode) => void) { for (const [value,label] of [["system","Sistema"],["light","Claro"],["dark","Escuro"]] as const) this.element.add(new Option(label,value)); this.element.addEventListener("change", () => this.onChange(this.element.value as MoonThemeMode)); } setMode(mode: MoonThemeMode): void { this.element.value = mode; } }

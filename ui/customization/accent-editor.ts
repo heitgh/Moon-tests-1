@@ -1,1 +1,0 @@
-export class AccentEditor { readonly element = document.createElement("input"); constructor(readonly onChange: (color: string) => void, value = "#7c5cff") { this.element.type = "color"; this.element.value = value; this.element.setAttribute("aria-label", "Cor de destaque"); this.element.addEventListener("input", () => this.onChange(this.element.value)); } }

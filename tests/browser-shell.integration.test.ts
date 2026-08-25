@@ -14,7 +14,9 @@ const bridge = {
   back: vi.fn(async () => undefined), forward: vi.fn(async () => undefined), reload: vi.fn(async () => undefined), stop: vi.fn(async () => undefined), setBounds: vi.fn(async () => undefined), setContentVisible, respondToPermission: vi.fn(async () => undefined),
   getDownloads: vi.fn(async () => []), pauseDownload: vi.fn(async () => undefined), resumeDownload: vi.fn(async () => undefined), cancelDownload: vi.fn(async () => undefined), openDownload: vi.fn(async () => undefined), showDownloadInFolder: vi.fn(async () => undefined), clearFinishedDownloads: vi.fn(async () => undefined),
   getAdblockStatus: vi.fn(async () => ({ phase: "active", enabled: true, blockedCount: 12 })), setAdblockEnabled: vi.fn(async (enabled: boolean) => ({ phase: enabled ? "active" : "disabled", enabled, blockedCount: 12 })),
-  exportProductData: vi.fn(async (_content: string) => true), importProductData: vi.fn(async () => null), migrateLegacyProfile: vi.fn(async () => ({ migrated: true, version: 1 })), onTabUpdated: vi.fn((listener: (update: unknown) => void) => { tabUpdateListeners.push(listener); return () => undefined; }), onTabClosed: vi.fn(() => () => undefined),
+  exportProductData: vi.fn(async (_content: string) => true), importProductData: vi.fn(async () => null),
+  exportCustomization: vi.fn(async (_content: string) => true), importCustomization: vi.fn(async () => null), fetchWallpaper: vi.fn(async () => "data:image/png;base64,YQ=="),
+  migrateLegacyProfile: vi.fn(async () => ({ migrated: true, version: 1 })), onTabUpdated: vi.fn((listener: (update: unknown) => void) => { tabUpdateListeners.push(listener); return () => undefined; }), onTabClosed: vi.fn(() => () => undefined),
   onDownloadsUpdated: vi.fn((listener: (downloads: readonly unknown[]) => void) => { downloadListeners.push(listener); return () => undefined; }),
   onAdblockStatus: vi.fn((listener: (status: unknown) => void) => { adblockListeners.push(listener); return () => undefined; }),
   onPermissionRequested: vi.fn((listener: (request: { readonly id: string; readonly origin: string; readonly permission: string }) => void) => { permissionListeners.push(listener); return () => undefined; })
@@ -56,7 +58,8 @@ describe("Moon browser shell", () => {
   it("opens and closes settings while hiding native web content", async () => {
     (document.querySelector('[aria-label="Configurações"]') as HTMLButtonElement).click(); await flush();
     expect(document.querySelector('[role="dialog"]')).not.toBeNull(); expect(setContentVisible).toHaveBeenCalledWith(false);
-    (document.querySelector('[aria-label="Fechar configurações"]') as HTMLButtonElement).click(); await flush();
+    expect(document.querySelector('[data-testid="customization-center"]')).not.toBeNull();
+    (document.querySelector('[aria-label="Fechar e cancelar alterações"]') as HTMLButtonElement).click(); await flush();
     expect(document.querySelector('[role="dialog"]')).toBeNull(); expect(setContentVisible).toHaveBeenLastCalledWith(true);
   });
   it("sends omnibox searches to the browser engine", async () => {
@@ -100,14 +103,41 @@ describe("Moon browser shell", () => {
     toggle.click(); await flush();
     expect(bridge.setAdblockEnabled).toHaveBeenCalledWith(false);
   });
-  it("exports profile data through the native backup bridge", async () => {
-    bridge.exportProductData.mockClear();
+  it("exports validated V2 customization through the native bridge", async () => {
+    bridge.exportCustomization.mockClear();
     (document.querySelector('[aria-label="Configurações"]') as HTMLButtonElement).click(); await flush();
-    (document.querySelector('[aria-label="Dados e backup"]') as HTMLButtonElement).click();
-    (document.querySelector('[aria-label="Exportar backup"]') as HTMLButtonElement).click(); await flush();
-    expect(bridge.exportProductData).toHaveBeenCalledOnce();
-    expect(bridge.exportProductData.mock.calls[0]?.[0]).toContain('"format": "moon-profile"');
-    (document.querySelector('[aria-label="Fechar configurações"]') as HTMLButtonElement).click(); await flush();
+    (document.querySelector('[aria-label="Workspaces e dados"]') as HTMLButtonElement).click();
+    (document.querySelector('[aria-label="Exportar tudo"]') as HTMLButtonElement).click(); await flush();
+    expect(bridge.exportCustomization).toHaveBeenCalledOnce();
+    expect(bridge.exportCustomization.mock.calls[0]?.[0]).toContain('"format": "moon-customization"');
+    (document.querySelector('[aria-label="Fechar e cancelar alterações"]') as HTMLButtonElement).click(); await flush();
+  });
+
+  it("applies customization live, persists it, and cancels the preview", async () => {
+    const before = document.documentElement.dataset.moonTheme;
+    (document.querySelector('[aria-label="Configurações"]') as HTMLButtonElement).click(); await flush();
+    const mode = [...document.querySelectorAll(".moon-field")].find(field => field.firstElementChild?.textContent === "Modo")?.querySelector("select") as HTMLSelectElement;
+    mode.value = before === "light" ? "dark" : "light"; mode.dispatchEvent(new Event("change", { bubbles: true })); await flush();
+    expect(document.documentElement.dataset.moonTheme).not.toBe(before);
+    expect(JSON.parse(localStorage.getItem("moon:customization:v2") ?? "{}").version).toBe(2);
+    (document.querySelector('[aria-label="Cancelar mudanças"]') as HTMLButtonElement).click(); await flush();
+    expect(document.documentElement.dataset.moonTheme).toBe(before);
+  });
+
+  it("searches across settings categories and reorders toolbar controls by keyboard", async () => {
+    (document.querySelector('[aria-label="Configurações"]') as HTMLButtonElement).click(); await flush();
+    const search = document.querySelector('[aria-label="Buscar nas configurações"]') as HTMLInputElement;
+    search.value = "tipografia"; search.dispatchEvent(new Event("input", { bubbles: true })); await flush();
+    expect([...document.querySelectorAll<HTMLElement>(".moon-setting-group")].some(group => !group.hidden && group.textContent?.includes("Família e ritmo"))).toBe(true);
+    search.value = ""; search.dispatchEvent(new Event("input", { bubbles: true }));
+    (document.querySelector('[aria-label="Layout e densidade"]') as HTMLButtonElement).click(); await flush();
+    const first = document.querySelector(".moon-order-row") as HTMLElement;
+    const initial = JSON.parse(localStorage.getItem("moon:customization:v2") ?? "{}").global.layout.toolbar.items.map((item: { id: string }) => item.id);
+    first.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", altKey: true, bubbles: true })); await flush();
+    const reordered = JSON.parse(localStorage.getItem("moon:customization:v2") ?? "{}").global.layout.toolbar.items.map((item: { id: string }) => item.id);
+    expect(reordered[0]).toBe(initial[1]); expect(reordered[1]).toBe(initial[0]);
+    expect(document.querySelector(".moon-visually-hidden")?.textContent).toContain("posição");
+    (document.querySelector('[aria-label="Cancelar mudanças"]') as HTMLButtonElement).click(); await flush();
   });
   it("queues site permissions and sends an explicit user decision", async () => {
     bridge.respondToPermission.mockClear(); setContentVisible.mockClear();

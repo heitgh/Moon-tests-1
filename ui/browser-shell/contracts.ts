@@ -21,7 +21,7 @@ export interface TabUpdate {
 
 export interface Workspace { readonly id: string; readonly name: string; }
 export interface SavedLink { readonly id: string; readonly title: string; readonly url: string; readonly time: number; }
-export interface Shortcut { readonly id: string; readonly name: string; readonly url: string; }
+export interface Shortcut { readonly id: string; readonly name: string; readonly url: string; readonly openIn?: "current" | "new"; }
 export interface SavedTheme { readonly id: string; readonly name: string; readonly accent: string; readonly wallpaper: string; readonly glassHome: boolean; }
 export type SearchEngine = "duckduckgo" | "google" | "brave";
 export interface Preferences { readonly accent: string; readonly wallpaper: string; readonly searchEngine: SearchEngine; readonly showClock: boolean; readonly showShortcuts: boolean; readonly glassHome: boolean; }
@@ -55,6 +55,9 @@ export interface MoonBrowserBridge {
   setAdblockEnabled(enabled: boolean): Promise<AdblockStatus>;
   exportProductData(content: string): Promise<boolean>;
   importProductData(): Promise<string | null>;
+  exportCustomization(content: string): Promise<boolean>;
+  importCustomization(): Promise<string | null>;
+  fetchWallpaper(url: string): Promise<string>;
   migrateLegacyProfile(content: string): Promise<{ readonly migrated: boolean; readonly version: number }>;
   onTabUpdated(listener: (update: TabUpdate) => void): () => void;
   onTabClosed(listener: (event: { readonly tabId: string }) => void): () => void;

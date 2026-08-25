@@ -1,3 +1,0 @@
-export interface HomeWidgetState { readonly id: string; readonly visible: boolean; readonly position: number; readonly columnSpan: 1 | 2 | 3 | 4; }
-export interface HomeState { readonly widgets: readonly HomeWidgetState[]; readonly editing: boolean; readonly greeting?: string; }
-export class HomeStateStore { #state: HomeState; constructor(state: HomeState = { widgets: [], editing: false }) { this.#state = state; } get state() { return this.#state; } update(update: Partial<HomeState>): HomeState { this.#state = { ...this.#state, ...update }; return this.#state; } move(id: string, position: number): HomeState { return this.update({ widgets: this.#state.widgets.map(item => item.id === id ? { ...item, position } : item).sort((a,b) => a.position-b.position) }); } }

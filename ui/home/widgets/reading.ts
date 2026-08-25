@@ -1,3 +1,0 @@
-import type { HomeWidget } from "../home-widgets.js";
-export interface ReadingItem { readonly id: string; readonly title: string; readonly url: string; }
-export function createReadingWidget(load: () => Promise<readonly ReadingItem[]>, open: (url: string) => void): HomeWidget { const element = document.createElement("section"); element.className = "home-widget home-widget--reading"; const refresh = async () => { const items = await load(); element.replaceChildren(...items.map(item => { const button = document.createElement("button"); button.type = "button"; button.textContent = item.title; button.addEventListener("click", () => open(item.url)); return button; })); }; return { id: "reading", title: "Leitura", element, refresh }; }

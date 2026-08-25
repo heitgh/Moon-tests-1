@@ -1,3 +1,0 @@
-import type { HomeWidget } from "../home-widgets.js";
-export interface SessionSummary { readonly id: string; readonly name: string; readonly tabs: number; }
-export function createSessionsWidget(load: () => Promise<readonly SessionSummary[]>, activate: (id: string) => void): HomeWidget { const element = document.createElement("section"); element.className = "home-widget home-widget--sessions"; const refresh = async () => { const items = await load(); element.replaceChildren(...items.map(item => { const button = document.createElement("button"); button.type = "button"; button.textContent = `${item.name} (${item.tabs})`; button.addEventListener("click", () => activate(item.id)); return button; })); }; return { id: "sessions", title: "Sessões", element, refresh }; }

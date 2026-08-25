@@ -96,6 +96,20 @@ export class CustomizationStore {
     return this.#mutate(document => { const next = clone(resolveCustomization(document, this.#workspaceId)); mutator(next); setResolved(document, this.#workspaceId, next); }, "update");
   }
 
+  set(path: string, value: unknown): boolean {
+    const segments = path.split(".").filter(Boolean);
+    if (segments.length === 0 || segments.some(segment => !/^[a-zA-Z][a-zA-Z0-9]*$/.test(segment))) return false;
+    return this.update(config => {
+      let target = config as unknown as Record<string, unknown>;
+      for (const segment of segments.slice(0, -1)) {
+        const next = target[segment];
+        if (!next || typeof next !== "object" || Array.isArray(next)) throw new Error(`Caminho de configuração inválido: ${path}`);
+        target = next as Record<string, unknown>;
+      }
+      target[segments.at(-1)!] = value;
+    });
+  }
+
   beginPreview(): void {
     if (!this.#previewSnapshot) this.#previewSnapshot = this.document;
   }
