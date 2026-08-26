@@ -14,6 +14,7 @@ import {
   type SavedCustomizationTheme,
   type SettingsScope
 } from "./customization-schema.js";
+import type { MoonThemeTokens } from "../../packages/theme-contract/types.js";
 
 export interface CustomizationChange {
   readonly document: CustomizationSchemaV2;
@@ -24,6 +25,7 @@ export interface CustomizationChange {
 
 export interface CustomizationLoadResult { readonly recovered: boolean; readonly message?: string; }
 type Listener = (change: CustomizationChange) => void;
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 export class CustomizationStore {
   readonly #listeners = new Set<Listener>();
@@ -180,6 +182,51 @@ export class CustomizationStore {
   applyTheme(id: string): void {
     const theme = this.#document.themes.find(candidate => candidate.id === id); if (!theme) throw new Error("Tema não encontrado.");
     this.#mutate(document => setResolved(document, this.#workspaceId, clone(theme.config)), "theme");
+  }
+
+  applyMoonTheme(tokens: MoonThemeTokens, wallpaperData?: string): boolean {
+    const families = { system: "Inter, ui-sans-serif, system-ui, sans-serif", serif: "ui-serif, Georgia, serif", mono: "ui-monospace, SFMono-Regular, Consolas, monospace" } as const;
+    const scales = { compact: 0.92, default: 1, large: 1.12 } as const;
+    return this.update(config => {
+      const appearance = config.appearance as Mutable<typeof config.appearance>;
+      if (tokens.colors) {
+        const colors = appearance.colors as Mutable<typeof appearance.colors>;
+        if (tokens.colors.background) colors.background = tokens.colors.background;
+        if (tokens.colors.surface) colors.surface = tokens.colors.surface;
+        if (tokens.colors.surfaceElevated) colors.elevated = tokens.colors.surfaceElevated;
+        if (tokens.colors.text) colors.text = tokens.colors.text;
+        if (tokens.colors.textMuted) colors.textMuted = tokens.colors.textMuted;
+        if (tokens.colors.accent) colors.accent = tokens.colors.accent;
+        if (tokens.colors.border) colors.border = tokens.colors.border;
+      }
+      if (tokens.shape?.radius !== undefined) (appearance.shape as Mutable<typeof appearance.shape>).radius = tokens.shape.radius;
+      if (tokens.shape?.borderWidth !== undefined) (appearance.shape as Mutable<typeof appearance.shape>).borderWidth = tokens.shape.borderWidth;
+      if (tokens.shape?.shadow !== undefined) (appearance.shape as Mutable<typeof appearance.shape>).shadow = tokens.shape.shadow;
+      if (tokens.shape?.elevation !== undefined) (appearance.shape as Mutable<typeof appearance.shape>).elevation = tokens.shape.elevation;
+      if (tokens.shape?.spacing !== undefined) (appearance.shape as Mutable<typeof appearance.shape>).spacing = tokens.shape.spacing;
+      if (tokens.shape?.density) (config.layout as Mutable<typeof config.layout>).density = tokens.shape.density;
+      if (tokens.glass?.enabled !== undefined) (appearance.glass as Mutable<typeof appearance.glass>).enabled = tokens.glass.enabled;
+      if (tokens.glass?.blur !== undefined) (appearance.glass as Mutable<typeof appearance.glass>).intensity = tokens.glass.blur;
+      if (tokens.glass?.intensity !== undefined) (appearance.glass as Mutable<typeof appearance.glass>).intensity = tokens.glass.intensity;
+      if (tokens.glass?.opacity !== undefined) (appearance.opacity as Mutable<typeof appearance.opacity>).cards = tokens.glass.opacity;
+      if (tokens.wallpaper && wallpaperData) {
+        const wallpaper = appearance.wallpaper as Mutable<typeof appearance.wallpaper>; wallpaper.type = "local"; wallpaper.source = wallpaperData; wallpaper.cachedData = undefined;
+        if (tokens.wallpaper.dim !== undefined) wallpaper.dim = tokens.wallpaper.dim;
+        if (tokens.wallpaper.blur !== undefined) wallpaper.blur = tokens.wallpaper.blur;
+        if (tokens.wallpaper.fit !== undefined) wallpaper.fit = tokens.wallpaper.fit;
+        if (tokens.wallpaper.position !== undefined) wallpaper.position = tokens.wallpaper.position;
+        if (tokens.wallpaper.repeat !== undefined) wallpaper.repeat = tokens.wallpaper.repeat;
+        if (tokens.wallpaper.opacity !== undefined) wallpaper.opacity = tokens.wallpaper.opacity;
+        if (tokens.wallpaper.brightness !== undefined) wallpaper.brightness = tokens.wallpaper.brightness;
+        if (tokens.wallpaper.contrast !== undefined) wallpaper.contrast = tokens.wallpaper.contrast;
+        if (tokens.wallpaper.saturation !== undefined) wallpaper.saturation = tokens.wallpaper.saturation;
+        if (tokens.wallpaper.hue !== undefined) wallpaper.hue = tokens.wallpaper.hue;
+      }
+      if (tokens.typography?.family) (config.typography as Mutable<typeof config.typography>).family = families[tokens.typography.family];
+      if (tokens.typography?.scale) (config.typography as Mutable<typeof config.typography>).scale = scales[tokens.typography.scale];
+      if (tokens.layout?.sidebar) (config.layout.sidebar as Mutable<typeof config.layout.sidebar>).position = tokens.layout.sidebar;
+      if (tokens.layout?.tabStyle) (config.layout as Mutable<typeof config.layout>).density = tokens.layout.tabStyle;
+    });
   }
 
   export(scope: "all" | "appearance" | "workspace" = "all"): string { return serializeCustomization(this.#document, scope, this.#workspaceId); }

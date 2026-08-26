@@ -109,16 +109,16 @@ export const DEFAULT_CUSTOMIZATION: CustomizationConfig = {
   },
   layout: {
     density: "comfortable", uiScale: 1,
-    sidebar: { position: "left", width: 52, iconSize: 18, spacing: 8, labels: "hover" },
+    sidebar: { position: "left", width: 56, iconSize: 18, spacing: 8, labels: "hover" },
     drawer: { mode: "fixed", width: 292 },
-    toolbar: { position: "top", height: 50, autoHide: false, items: ([
+    toolbar: { position: "top", height: 48, autoHide: false, items: ([
       ["back", true], ["forward", true], ["reload", true], ["home", false], ["omnibox", true], ["bookmark", true],
       ["downloads", false], ["modules", false], ["spacer", false], ["ai", true], ["profile", false], ["menu", false]
     ] as const).map(([id, visible]) => ({ id, visible })) },
     omnibox: { position: "toolbar" }, statusBar: { visible: true }
   },
   home: { preset: "custom", columns: 4, gap: 16, maxWidth: 900, horizontalAlign: "center", verticalAlign: "center", padding: 32, cardStyle: "transparent", greeting: "Onde você quer chegar hoje?", widgets: BASE_WIDGETS },
-  typography: { family: "Inter, ui-sans-serif, system-ui, sans-serif", baseSize: 14, scale: 1, weight: 400, lineHeight: 1.5, letterSpacing: 0, uiSize: 12, omniboxSize: 12, tabSize: 11, homeSize: 16, iconScale: 1, labels: true },
+  typography: { family: "Inter, ui-sans-serif, system-ui, sans-serif", baseSize: 14, scale: 1, weight: 400, lineHeight: 1.5, letterSpacing: 0, uiSize: 13, omniboxSize: 14, tabSize: 13, homeSize: 16, iconScale: 1, labels: true },
   search: { defaultEngine: "duckduckgo", providers: [
     { id: "duckduckgo", name: "DuckDuckGo", template: "https://duckduckgo.com/?q={query}", keyword: "d" },
     { id: "google", name: "Google", template: "https://www.google.com/search?q={query}", keyword: "g" },

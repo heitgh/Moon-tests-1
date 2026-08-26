@@ -24,11 +24,17 @@ async function selectValue(page: Page, label: string, value: string): Promise<vo
   }, value);
 }
 
+async function setViewport(application: ElectronApplication, page: Page, width: number, height: number): Promise<void> {
+  await application.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.width, size.height, false), { width, height });
+  await page.setViewportSize({ width, height });
+}
+
 test("starts the packaged desktop shell and opens every primary panel", async () => {
+  const userData = await mkdtemp(join(tmpdir(), "moon-e2e-smoke-"));
   const application = await electron.launch({
-    args: [...platformArguments, "."],
+    args: [...platformArguments, `--user-data-dir=${userData}`, "."],
     cwd: process.cwd(),
-    env: { ...desktopEnv, NODE_ENV: "test" }
+    env: { ...desktopEnv, NODE_ENV: "test", MOON_TEST_PROFILE_DIR: userData }
   });
 
   try {
@@ -57,6 +63,7 @@ test("starts the packaged desktop shell and opens every primary panel", async ()
     await expect(window.getByRole("heading", { name: "Aparência" })).toBeVisible();
   } finally {
     await application.close();
+    await rm(userData, { recursive: true, force: true });
   }
 });
 
@@ -150,6 +157,32 @@ test("exports and imports customization through the real desktop bridge", async 
     await window.getByLabel("Importar personalização").click();
     await expect.poll(() => window.evaluate(() => document.documentElement.dataset.moonTheme)).toBe("light");
     await window.getByLabel("Aplicar personalização").click();
+  } finally {
+    await application.close();
+    await rm(userData, { recursive: true, force: true });
+  }
+});
+
+test("keeps the Phase A chrome readable, reachable and unclipped across target viewports", async () => {
+  const userData = await mkdtemp(join(tmpdir(), "moon-e2e-ergonomics-"));
+  const application = await electron.launch({ args: [...platformArguments, `--user-data-dir=${userData}`, "."], cwd: process.cwd(), env: { ...desktopEnv, NODE_ENV: "test", MOON_TEST_PROFILE_DIR: userData } });
+  try {
+    const window = await shellWindow(application);
+    for (const [width, height] of [[909, 1026], [1280, 800], [1440, 900], [1920, 1080]] as const) {
+      await setViewport(application, window, width, height);
+      await expect.poll(() => window.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }))).toEqual({ width, scroll: width });
+      const metrics = await window.evaluate(() => {
+        const visible = (node: Element): node is HTMLElement => node instanceof HTMLElement && !node.hidden && getComputedStyle(node).display !== "none";
+        const fontSizes = [...document.querySelectorAll(".moon-tab-title, .moon-omnibox, .moon-workspace-chip, .moon-shortcut-label")].filter(visible).map(node => Number.parseFloat(getComputedStyle(node).fontSize));
+        const targets = [...document.querySelectorAll(".moon-rail-button, .moon-nav-button, .moon-add-tab, .moon-workspace-chip, .moon-home-search-button")].filter(visible).map(node => { const rect = node.getBoundingClientRect(); return Math.min(rect.width, rect.height); });
+        const grid = document.querySelector(".moon-home-grid")?.getBoundingClientRect();
+        return { minFont: Math.min(...fontSizes), minTarget: Math.min(...targets), gridLeft: grid?.left ?? -1, gridRight: grid?.right ?? Number.MAX_VALUE };
+      });
+      expect(metrics.minFont).toBeGreaterThanOrEqual(11);
+      expect(metrics.minTarget).toBeGreaterThanOrEqual(40);
+      expect(metrics.gridLeft).toBeGreaterThanOrEqual(0);
+      expect(metrics.gridRight).toBeLessThanOrEqual(width);
+    }
   } finally {
     await application.close();
     await rm(userData, { recursive: true, force: true });

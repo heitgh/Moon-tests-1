@@ -8,6 +8,7 @@ import { isIP } from "node:net";
 import { parseMoonProfileBackup } from "../../../../packages/storage/backup/profile-backup.js";
 import { createDefaultCustomization, parseCustomizationImport } from "../../../../ui/customization/customization-schema.js";
 import type { ProfileStorage } from "../services/profile-storage.js";
+import type { MoonThemeService } from "../services/moon-theme-service.js";
 
 interface IdPayload { readonly id: string; }
 
@@ -15,7 +16,8 @@ export function registerProductIpc(
   router: IpcRouter,
   downloads: ElectronDownloadManager,
   adblock: ElectronAdblockService,
-  profile: ProfileStorage
+  profile: ProfileStorage,
+  themes: MoonThemeService
 ): void {
   const idFrom = (payload: IdPayload): string => {
     if (!payload || typeof payload.id !== "string" || payload.id.length > 100) {
@@ -89,6 +91,18 @@ export function registerProductIpc(
     }
     return profile.migrateLegacyProfile(payload.content);
   });
+  router.register("theme:import", () => themes.importFromDialog());
+  router.register("theme:confirm", (_event, payload: { readonly intentId: string }) => themes.confirm(idFrom({ id: payload?.intentId })));
+  router.register("theme:cancel", (_event, payload: { readonly intentId: string }) => themes.cancel(idFrom({ id: payload?.intentId })));
+  router.register("theme:list", () => themes.list());
+  router.register("theme:apply", (_event, payload: IdPayload) => themes.apply(idFrom(payload)));
+  router.register("theme:activate", (_event, payload: IdPayload) => themes.activate(idFrom(payload)));
+  router.register("theme:rollback", (_event, payload?: { readonly packageId?: string }) => {
+    if (!payload || typeof payload.packageId !== "string" || payload.packageId.length > 64) throw new TypeError("A valid package ID is required");
+    return themes.rollback(payload.packageId);
+  });
+  router.register("theme:remove", (_event, payload: IdPayload) => themes.remove(idFrom(payload)));
+  router.register("theme:export", (_event, payload: IdPayload) => themes.export(idFrom(payload)));
 }
 
 const MAX_WALLPAPER_BYTES = 1_500_000;

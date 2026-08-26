@@ -11,6 +11,7 @@ import { ElectronAdblockService } from "../services/adblock-service.js";
 import { ElectronDownloadManager } from "../services/download-manager.js";
 import { ProfileStorage } from "../services/profile-storage.js";
 import { BrowserApplicationService } from "../../application/browser-application-service.js";
+import { MoonThemeService } from "../services/moon-theme-service.js";
 
 const windows = new WindowManager();
 const downloads = new ElectronDownloadManager(windows);
@@ -49,10 +50,11 @@ app.whenReady().then(async () => {
   const testProfileDirectory = process.env.NODE_ENV === "test" ? process.env.MOON_TEST_PROFILE_DIR : undefined;
   profile = new ProfileStorage(testProfileDirectory ?? join(app.getPath("userData"), "profile"));
   await profile.open();
+  const themes = new MoonThemeService(profile, app.getVersion());
   application = new BrowserApplicationService(browser, profile);
   installApplicationMenu();
   registerBrowserIpc(ipc, application, windows);
-  registerProductIpc(ipc, downloads, adblock, profile);
+  registerProductIpc(ipc, downloads, adblock, profile, themes);
   registerApplicationLifecycle(windows, createMainWindow);
   await createMainWindow();
   void adblock.initialize();

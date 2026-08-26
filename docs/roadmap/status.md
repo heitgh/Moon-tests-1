@@ -1,6 +1,6 @@
 # Moon Browser — status de reconstrução
 
-Atualizado em 25 de agosto de 2026. Este documento descreve somente capacidades conectadas ao runtime ativo.
+Atualizado em 26 de agosto de 2026. Este documento descreve somente capacidades conectadas ao runtime ativo.
 
 ## Moon Foundation Recovery
 
@@ -33,14 +33,36 @@ Atualizado em 25 de agosto de 2026. Este documento descreve somente capacidades 
 | Wallpaper remoto opcional e seguro | Concluído | HTTPS restrito, destino público, tipo/tamanho validados e dados servidos pelo main; CSP continua restritiva |
 | Capturas do runtime V2 | Concluído | `assets/screenshots/page.png` a `page2.png` |
 
+## Reconstrução ergonômica
+
+| Entrega | Estado | Evidência |
+|---|---|---|
+| Fase A — tokens, grade e sistema visual | Concluído | `docs/audits/ergonomics-phase-a-2026-08-26.md` |
+| Tipografia padrão de 13–14 px e alvos de 40 px | Concluído | tokens semânticos, unit e E2E em quatro viewports |
+| Capturas responsivas e seis categorias | Concluído | `assets/screenshots/phase-a-*` |
+| Medição reproduzível de interação | Concluído | `npm run measure:ui` |
+| Fase B — Home ergonômica e presets distintos | Próximo corte | ainda não implementada |
+
 ## Quality gates atuais
 
 - TypeScript estrito e ESLint.
-- 22 testes unitários.
+- 35 testes unitários.
 - 14 testes de integração do shell.
-- 5 testes SQLite no runtime Electron.
-- 4 E2E Electron: smoke, restore de sessão, persistência V2 e import/export da bridge desktop.
+- 6 testes SQLite/serviços no runtime Electron.
+- 5 E2E Electron: smoke, restore de sessão, persistência V2, import/export e ergonomia em quatro viewports.
 - Build Linux AppImage e deb; a validação final desta recuperação deve ser repetida após cada alteração de empacotamento.
+
+## Moon Themes e menu contextual
+
+| Entrega | Estado | Evidência |
+|---|---|---|
+| Contrato `.moontheme` v1 e fixtures hostis | Concluído | `packages/theme-contract` e `tests/unit/moon-theme-contract.test.ts` |
+| Importar, quarentena, preview, confirmar e exportar | Concluído | `moon-theme-service.ts`, IPC allowlisted e Moon Studio |
+| Aplicar, atualizar, manter versão, remover e rollback | Concluído | ThemeRepository, Personalização V2 e teste Electron de reinício |
+| Menu página/link/seleção/editável/imagem/mídia | Concluído | `context-menu.ts` e modelo tipado testável |
+| Clipboard, impressão e downloads com progresso | Concluído | APIs nativas do Electron e DownloadManager existente |
+| Deep link/API oficial | Bloqueado por integração externa | faltam domínio, endpoint, trust roots e contrato de intent oficiais |
+| Conta, favoritos e Device Authorization | Bloqueado por integração externa | faltam issuer OAuth, client ID e API do Moon Themes |
 
 ## Dívida explícita antes das fases de produto
 

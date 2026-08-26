@@ -308,6 +308,15 @@ class BrowserShell {
       onExport: content => this.#bridge?.exportCustomization(content) ?? Promise.resolve(false),
       onImport: () => this.#bridge?.importCustomization() ?? Promise.resolve(null),
       onFetchWallpaper: url => this.#bridge?.fetchWallpaper(url) ?? Promise.reject(new Error("Wallpapers HTTPS exigem o aplicativo desktop.")),
+      onImportMoonTheme: () => this.#bridge?.importMoonTheme() ?? Promise.reject(new Error("Moon Themes exigem o aplicativo desktop.")),
+      onConfirmMoonTheme: intentId => this.#bridge?.confirmMoonTheme(intentId) ?? Promise.reject(new Error("Moon Themes exigem o aplicativo desktop.")),
+      onCancelMoonTheme: intentId => this.#bridge?.cancelMoonTheme(intentId) ?? Promise.reject(new Error("Moon Themes exigem o aplicativo desktop.")),
+      onListMoonThemes: () => this.#bridge?.listMoonThemes() ?? Promise.resolve([]),
+      onApplyMoonTheme: id => this.#bridge?.applyMoonTheme(id) ?? Promise.reject(new Error("Moon Themes exigem o aplicativo desktop.")),
+      onActivateMoonTheme: id => this.#bridge?.activateMoonTheme(id) ?? Promise.reject(new Error("Moon Themes exigem o aplicativo desktop.")),
+      onRollbackMoonTheme: packageId => this.#bridge?.rollbackMoonTheme(packageId) ?? Promise.reject(new Error("Moon Themes exigem o aplicativo desktop.")),
+      onRemoveMoonTheme: id => this.#bridge?.removeMoonTheme(id) ?? Promise.reject(new Error("Moon Themes exigem o aplicativo desktop.")),
+      onExportMoonTheme: id => this.#bridge?.exportMoonTheme(id) ?? Promise.reject(new Error("Moon Themes exigem o aplicativo desktop.")),
       shortcuts: () => this.#shortcuts,
       onAddShortcut: shortcut => { this.#shortcuts = [...this.#shortcuts, { ...shortcut, id: crypto.randomUUID() }]; save(KEYS.shortcuts, this.#shortcuts); this.#refreshHomeData(); },
       onRemoveShortcut: id => { this.#shortcuts = this.#shortcuts.filter(shortcut => shortcut.id !== id); save(KEYS.shortcuts, this.#shortcuts); this.#refreshHomeData(); },
@@ -363,6 +372,7 @@ class BrowserShell {
   }
   #applyCustomization(config: CustomizationConfig): void {
     this.#customizationApplier.apply(config);
+    const provider = config.search.providers.find(item => item.id === config.search.defaultEngine); if (provider && this.#bridge?.setSearchTemplate) void this.#bridge.setSearchTemplate(provider.template);
     this.#toolbar.applyLayout(config.layout);
     this.#homeView.apply(config);
     this.#refreshHomeData();

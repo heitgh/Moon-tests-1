@@ -10,7 +10,7 @@ import { BookmarkRepository } from "../../../../packages/storage/repositories/bo
 import { HistoryRepository } from "../../../../packages/storage/repositories/history-repository.js";
 import { NoteRepository } from "../../../../packages/storage/repositories/note-repository.js";
 import { SettingsRepository } from "../../../../packages/storage/repositories/settings-repository.js";
-import { ThemeRepository } from "../../../../packages/storage/repositories/theme-repository.js";
+import { ThemeRepository, type ThemeRecord } from "../../../../packages/storage/repositories/theme-repository.js";
 import { WallpaperRepository } from "../../../../packages/storage/repositories/wallpaper-repository.js";
 import { WorkspaceRepository } from "../../../../packages/storage/repositories/workspace-repository.js";
 
@@ -128,6 +128,11 @@ export class ProfileStorage {
     }
     return tabs;
   }
+
+  listThemes(): Promise<readonly ThemeRecord[]> { return this.#themes.list(); }
+  getTheme(id: string): Promise<ThemeRecord | undefined> { return this.#themes.get(id); }
+  saveTheme(theme: ThemeRecord): Promise<void> { return this.#themes.save(theme); }
+  removeTheme(id: string): Promise<boolean> { return this.#themes.removeCustom(id); }
 
   async #metadataNumber(key: string): Promise<number> {
     const row = await this.#database.get<{ value: string }>("SELECT value FROM moon_metadata WHERE key = ?", [key]);

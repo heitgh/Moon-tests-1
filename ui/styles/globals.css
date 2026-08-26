@@ -1,15 +1,11 @@
 @import "./variables.css";
 @import "./reset.css";
-@import "./themes.css";
-@import "./legacy-shell.css";
 @import "./shell.css";
 @import "./home.css";
 @import "./panels.css";
 @import "./settings.css";
-@import "./browser-animations.css";
 @import "./animations.css";
 @import "./browser-responsive.css";
-@import "./responsive.css";
 @import "./accessibility.css";
 @import "./customization-runtime.css";
 

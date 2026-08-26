@@ -64,6 +64,10 @@ export function registerBrowserIpc(
     }
     browser.setContentVisible(windowIdFor(event), payload.visible);
   });
+  router.register("browser:set-search-template", (event, payload?: { readonly template?: string }) => {
+    if (!payload || typeof payload.template !== "string") throw new TypeError("A search template is required");
+    browser.setSearchTemplate(windowIdFor(event), payload.template);
+  });
   router.register("browser:respond-permission", (event, payload?: { readonly requestId?: string; readonly granted?: boolean }) => {
     if (!payload || typeof payload.requestId !== "string" || typeof payload.granted !== "boolean") {
       throw new TypeError("A valid permission response is required");

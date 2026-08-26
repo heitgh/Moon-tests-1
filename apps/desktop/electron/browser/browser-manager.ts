@@ -12,6 +12,7 @@ import { NavigationController } from "./navigation-controller.js";
 import type { ElectronAdblockService } from "../services/adblock-service.js";
 import type { ElectronDownloadManager } from "../services/download-manager.js";
 import type { Session } from "electron";
+import { openElectronContextMenu } from "./context-menu.js";
 
 export interface BrowserNavigationState {
   readonly canGoBack: boolean;
@@ -38,6 +39,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   readonly #activeTabs = new Map<string, string>();
   readonly #bounds = new Map<string, Electron.Rectangle>();
   readonly #contentVisible = new Map<string, boolean>();
+  readonly #searchTemplates = new Map<string, string>();
   readonly #permissionSessions = new WeakSet<Session>();
   readonly #permissionRequests = new Map<string, {
     readonly windowId: string;
@@ -245,6 +247,12 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     }
   }
 
+  setSearchTemplate(windowId: string, template: string): void {
+    if (template.length > 2_048 || !template.includes("{query}")) throw new TypeError("Invalid search template");
+    const probe = new URL(template.replace("{query}", "moon")); if (probe.protocol !== "https:" || probe.username || probe.password) throw new TypeError("Search template must use HTTPS");
+    this.#searchTemplates.set(windowId, template);
+  }
+
   ownsTab(tabId: string, windowId: string): boolean {
     return this.#tabWindows.get(tabId) === windowId;
   }
@@ -270,6 +278,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     this.#activeTabs.delete(windowId);
     this.#bounds.delete(windowId);
     this.#contentVisible.delete(windowId);
+    this.#searchTemplates.delete(windowId);
     for (const [requestId, request] of this.#permissionRequests) {
       if (request.windowId !== windowId) continue;
       clearTimeout(request.timeout);
@@ -313,6 +322,10 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
         console.error("Failed to open tab", error);
       });
       return { action: "deny" };
+    });
+    contents.on("context-menu", (_event, params) => {
+      const tab = this.#requireTab(id); const window = this.windows.get(windowId); if (!window || contents.isDestroyed()) return;
+      openElectronContextMenu({ windowId, window, contents, params, tab: { id, workspaceId: tab.workspaceId, sessionId: tab.sessionId, private: tab.private }, searchUrl: selection => (this.#searchTemplates.get(windowId) ?? "https://duckduckgo.com/?q={query}").replace("{query}", encodeURIComponent(selection)), createTab: (url, source) => this.createTab(windowId, { url, active: true, workspaceId: source.workspaceId, sessionId: source.sessionId, private: source.private }), navigate: (tabId, url) => this.navigate(tabId, url) });
     });
 
     contents.on("will-navigate", event => {

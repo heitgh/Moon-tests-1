@@ -48,6 +48,7 @@
     "quality": "npm run typecheck && npm run lint && npm run test:unit && npm run test:integration && npm run test:electron-storage",
     "native:electron": "electron-builder install-app-deps",
     "screenshots:desktop": "npm run compile && tsx scripts/development/capture-screenshots.ts",
+    "measure:ui": "npm run compile && tsx scripts/development/measure-ui-performance.ts",
     "db:migrate": "tsx scripts/database/migrate.ts",
     "db:seed": "tsx scripts/database/seed.ts",
     "db:backup": "tsx scripts/database/backup.ts",

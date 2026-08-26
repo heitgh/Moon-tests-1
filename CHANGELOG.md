@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — Moon Themes e menu contextual (2026-08-26)
+
+### Adicionado
+
+- contrato canônico `.moontheme` v1 com assinatura Ed25519, hashes, compatibilidade, MIME e schemas estritos;
+- importação manual com quarentena, diff, confiança visível, confirmação, exportação, versões, aplicação, remoção e rollback;
+- menu contextual nativo para página, links, seleção, edição, imagens, vídeo e áudio, integrado a clipboard, impressão e downloads;
+- buscador configurado sincronizado com o processo principal para pesquisas da seleção.
+
+### Segurança
+
+- bloqueio de traversal, caminhos absolutos, symlinks, ZIP bombs, arquivos não declarados, tipos executáveis, MIME falso e SVG ativo;
+- nenhum preload, IPC, Node ou script DOM foi exposto às páginas remotas;
+- ativação do tema só é persistida depois que a Personalização V2 aceita o preview e o usuário confirma as mudanças.
+
+## Unreleased — Reconstrução ergonômica, Fase A (2026-08-26)
+
+### Alterado
+
+- sistema visual centralizado em tokens semânticos de tipografia, espaço, alturas, raios, sombras, foco e movimento;
+- chrome ativo alinhado a um piso legível de 13–14 px e alvos principais de 40 px;
+- defaults de novos perfis atualizados sem alterar o formato nem a migração da Personalização V2;
+- folhas estruturais legadas removidas da composição ativa para evitar regras concorrentes;
+- capturas de regressão ampliadas para quatro resoluções, página aberta, drawer e seis categorias.
+
+### Qualidade
+
+- smoke Electron isolado do perfil local;
+- contratos unitários dos tokens e E2E geométrico de legibilidade, alvos e overflow;
+- medição local reproduzível com `npm run measure:ui`.
+
 ## Unreleased — Personalização V2, Fase 1 (2026-08-25)
 
 ### Adicionado

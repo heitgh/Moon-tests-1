@@ -11,7 +11,7 @@ import {
   type ToolbarItemId
 } from "./customization-schema.js";
 import { CustomizationStore } from "./customization-store.js";
-import type { Shortcut } from "../browser-shell/contracts.js";
+import type { MoonThemePayload, MoonThemePreview, MoonThemeSummary, Shortcut } from "../browser-shell/contracts.js";
 
 export interface CustomizationCenterOptions {
   readonly store: CustomizationStore;
@@ -20,6 +20,15 @@ export interface CustomizationCenterOptions {
   readonly onExport: (content: string) => Promise<boolean>;
   readonly onImport: () => Promise<string | null>;
   readonly onFetchWallpaper: (url: string) => Promise<string>;
+  readonly onImportMoonTheme: () => Promise<MoonThemePreview | null>;
+  readonly onConfirmMoonTheme: (intentId: string) => Promise<MoonThemeSummary>;
+  readonly onCancelMoonTheme: (intentId: string) => Promise<void>;
+  readonly onListMoonThemes: () => Promise<readonly MoonThemeSummary[]>;
+  readonly onApplyMoonTheme: (id: string) => Promise<MoonThemePayload>;
+  readonly onActivateMoonTheme: (id: string) => Promise<MoonThemeSummary>;
+  readonly onRollbackMoonTheme: (packageId: string) => Promise<MoonThemePayload>;
+  readonly onRemoveMoonTheme: (id: string) => Promise<void>;
+  readonly onExportMoonTheme: (id: string) => Promise<boolean>;
   readonly shortcuts: () => readonly Shortcut[];
   readonly onAddShortcut: (shortcut: Omit<Shortcut, "id">) => void;
   readonly onRemoveShortcut: (id: string) => void;
@@ -63,11 +72,15 @@ export class CustomizationCenter {
   readonly #undo = button("moon-secondary-button", "Desfazer", "back");
   readonly #redo = button("moon-secondary-button", "Refazer", "forward");
   #active: SectionId = "appearance";
+  #moonThemes: readonly MoonThemeSummary[] = [];
+  #pendingMoonTheme: MoonThemePreview | undefined;
+  #selectedMoonThemeId: string | undefined;
 
   constructor(readonly options: CustomizationCenterOptions) {
     options.store.beginPreview();
     this.#build();
     this.#render();
+    void this.#loadMoonThemes();
     requestAnimationFrame(() => this.#search.focus());
   }
 
@@ -159,6 +172,22 @@ export class CustomizationCenter {
     const themes = this.#group("Temas completos", "Salvar, aplicar, duplicar, renomear e excluir a configuração integral.", "tema salvar nomear duplicar editar excluir");
     const form = element("form", "moon-custom-form"); const name = element("input", "moon-settings-input"); name.placeholder = "Nome do tema"; name.setAttribute("aria-label", "Nome do novo tema"); const save = button("moon-primary-button", "Salvar tema completo", "plus"); save.append(element("span", "", "Salvar tema")); form.append(name, save); form.addEventListener("submit", event => { event.preventDefault(); try { this.options.store.saveTheme(name.value || `Tema ${this.options.store.document.themes.length + 1}`); this.#say("Tema completo salvo."); this.#render(); } catch (error) { this.#error(error); } }); themes.append(form);
     for (const theme of this.options.store.document.themes) { const row = element("article", "moon-theme-row"); const copy = element("span", "moon-list-copy"); copy.append(element("strong", "", theme.name), element("small", "", new Intl.DateTimeFormat("pt-BR").format(theme.createdAt))); const apply = button("moon-text-button", `Aplicar ${theme.name}`, "palette"); apply.append(element("span", "", "Aplicar")); apply.addEventListener("click", () => { this.options.store.applyTheme(theme.id); this.#render(); }); const duplicate = button("moon-icon-button", `Duplicar ${theme.name}`, "plus"); duplicate.addEventListener("click", () => { this.options.store.duplicateTheme(theme.id); this.#render(); }); const rename = button("moon-icon-button", `Renomear ${theme.name}`, "note"); rename.addEventListener("click", () => { const value = prompt("Novo nome", theme.name); if (value) { this.options.store.renameTheme(theme.id, value); this.#render(); } }); const remove = button("moon-icon-button", `Excluir ${theme.name}`, "trash"); remove.addEventListener("click", () => { this.options.store.deleteTheme(theme.id); this.#render(); }); row.append(copy, apply, duplicate, rename, remove); themes.append(row); }
+    const importTheme = button("moon-secondary-button", "Importar pacote Moon Theme", "download"); importTheme.append(element("span", "", "Importar .moontheme")); importTheme.addEventListener("click", () => void this.#importMoonTheme()); themes.append(importTheme);
+    if (this.#pendingMoonTheme) {
+      const pending = this.#pendingMoonTheme; const preview = element("article", "moon-theme-package-preview");
+      const copy = element("div", "moon-list-copy"); copy.append(element("strong", "", `${pending.name} · ${pending.version}`), element("small", "", `${pending.author} · ${pending.trust === "official" ? "Assinatura oficial" : "Assinatura local / não oficial"}`), element("p", "", pending.description ?? "Sem descrição."), element("small", "", `Alterações: ${pending.changes.join(", ") || "nenhuma"}`));
+      if (pending.wallpaperData) { const image = element("img", "moon-theme-package-image"); image.src = pending.wallpaperData; image.alt = `Prévia de ${pending.name}`; preview.append(image); }
+      const cancel = button("moon-secondary-button", "Cancelar importação"); cancel.append(element("span", "", "Cancelar")); cancel.addEventListener("click", () => void this.#cancelMoonTheme());
+      const install = button("moon-primary-button", "Instalar e aplicar tema", "palette"); install.append(element("span", "", "Instalar e aplicar")); install.addEventListener("click", () => void this.#confirmMoonTheme());
+      const actions = element("div", "moon-theme-package-actions"); actions.append(cancel, install); preview.append(copy, actions); themes.append(preview);
+    }
+    for (const theme of this.#moonThemes) {
+      const row = element("article", `moon-theme-row moon-theme-package${theme.active ? " is-active" : ""}`); const copy = element("span", "moon-list-copy"); copy.append(element("strong", "", `${theme.name} · ${theme.version}`), element("small", "", `${theme.author} · ${theme.trust === "official" ? "Oficial" : "Local / não oficial"}${theme.active ? " · Ativo" : ""}`));
+      const apply = button("moon-text-button", `Aplicar ${theme.name}`, "palette"); apply.append(element("span", "", "Aplicar")); apply.disabled = theme.active; apply.addEventListener("click", () => void this.#applyMoonTheme(theme.id));
+      const rollback = button("moon-icon-button", `Restaurar versão anterior de ${theme.name}`, "back"); rollback.addEventListener("click", () => void this.#rollbackMoonTheme(theme.packageId));
+      const exportTheme = button("moon-icon-button", `Exportar ${theme.name}`, "download"); exportTheme.addEventListener("click", () => void this.#exportMoonTheme(theme.id));
+      const remove = button("moon-icon-button", `Remover ${theme.name}`, "trash"); remove.addEventListener("click", () => void this.#removeMoonTheme(theme)); row.append(copy, apply, rollback, exportTheme, remove); themes.append(row);
+    }
     this.#content.append(mode, colors, wallpaper, effects, themes);
   }
 
@@ -232,7 +261,22 @@ export class CustomizationCenter {
   #homePreset(preset: HomePreset): void { const presets: Readonly<Record<Exclude<HomePreset, "custom">, readonly HomeWidgetId[]>> = { minimal: ["clock", "date", "search", "shortcuts"], focus: ["clock", "greeting", "search", "focus", "notes"], study: ["clock", "date", "search", "shortcuts", "tasks", "reading", "notes"], work: ["clock", "date", "search", "favorites", "recentTabs", "tasks", "calendar", "downloads"], dev: ["clock", "search", "shortcuts", "recentTabs", "sessions", "notes", "performance"] }; this.options.store.update(next => { (next.home as { preset: HomePreset }).preset = preset; if (preset !== "custom") next.home.widgets.forEach(widget => (widget as { visible: boolean }).visible = presets[preset].includes(widget.id)); }); this.#render(); }
   async #export(scope: "appearance" | "workspace" | "all"): Promise<void> { try { const saved = await this.options.onExport(this.options.store.export(scope)); this.#say(saved ? "Personalização exportada." : "Exportação cancelada."); } catch (error) { this.#error(error); } }
   async #import(): Promise<void> { try { const content = await this.options.onImport(); if (!content) return; if (!confirm("Importar esta personalização? Você ainda pode cancelar o preview.")) return; this.options.store.import(content); this.#say("Importação validada e aplicada ao preview."); this.#render(); } catch (error) { this.#error(error); } }
-  async #close(applied: boolean): Promise<void> { if (applied) this.options.store.applyPreview(); else this.options.store.cancelPreview(); await this.options.onClose(applied); }
+  async #loadMoonThemes(): Promise<void> { try { this.#moonThemes = await this.options.onListMoonThemes(); this.#render(); } catch (error) { this.#error(error); } }
+  async #importMoonTheme(): Promise<void> { try { const preview = await this.options.onImportMoonTheme(); if (!preview) return; this.#pendingMoonTheme = preview; this.#say("Pacote validado. Revise autoria, confiança e alterações antes de instalar."); this.#render(); } catch (error) { this.#error(error); } }
+  async #cancelMoonTheme(): Promise<void> { const pending = this.#pendingMoonTheme; if (!pending) return; try { await this.options.onCancelMoonTheme(pending.intentId); this.#pendingMoonTheme = undefined; this.#say("Importação cancelada e quarentena removida."); this.#render(); } catch (error) { this.#error(error); } }
+  async #confirmMoonTheme(): Promise<void> { const pending = this.#pendingMoonTheme; if (!pending) return; try { const installed = await this.options.onConfirmMoonTheme(pending.intentId); this.#pendingMoonTheme = undefined; await this.#applyMoonTheme(installed.id); this.#say("Moon Theme instalado e aplicado ao preview. Use Aplicar mudanças para confirmar."); } catch (error) { this.#error(error); } }
+  async #applyMoonTheme(id: string): Promise<void> { try { const payload = await this.options.onApplyMoonTheme(id); const accepted = this.options.store.applyMoonTheme(payload.tokens, payload.wallpaperData); this.#result(accepted); if (!accepted) return; this.#selectedMoonThemeId = id; this.#say("Tema aplicado ao preview. Confirme em Aplicar mudanças."); this.#render(); } catch (error) { this.#error(error); } }
+  async #rollbackMoonTheme(packageId: string): Promise<void> { try { const payload = await this.options.onRollbackMoonTheme(packageId); const accepted = this.options.store.applyMoonTheme(payload.tokens, payload.wallpaperData); this.#result(accepted); if (accepted) { this.#selectedMoonThemeId = payload.summary.id; this.#say("Versão anterior restaurada no preview. Confirme em Aplicar mudanças."); this.#render(); } } catch (error) { this.#error(error); } }
+  async #removeMoonTheme(theme: MoonThemeSummary): Promise<void> { if (!confirm(`Remover ${theme.name} ${theme.version}?`)) return; try { await this.options.onRemoveMoonTheme(theme.id); await this.#loadMoonThemes(); this.#say("Tema removido com segurança."); } catch (error) { this.#error(error); } }
+  async #exportMoonTheme(id: string): Promise<void> { try { const exported = await this.options.onExportMoonTheme(id); this.#say(exported ? "Pacote .moontheme exportado." : "Exportação cancelada."); } catch (error) { this.#error(error); } }
+  async #close(applied: boolean): Promise<void> {
+    try {
+      if (this.#pendingMoonTheme) { await this.options.onCancelMoonTheme(this.#pendingMoonTheme.intentId); this.#pendingMoonTheme = undefined; }
+      if (applied && this.#selectedMoonThemeId) await this.options.onActivateMoonTheme(this.#selectedMoonThemeId);
+      if (applied) this.options.store.applyPreview(); else this.options.store.cancelPreview();
+      await this.options.onClose(applied);
+    } catch (error) { this.#error(error); }
+  }
   #filter(): void { const query = this.#search.value.trim().toLocaleLowerCase("pt-BR"); let shown = 0; this.#content.querySelectorAll<HTMLElement>(".moon-setting-group").forEach(group => { const match = !query || group.dataset.search?.includes(query); group.hidden = !match; if (match) shown += 1; }); this.#content.querySelector(".moon-settings-no-results")?.remove(); if (query && shown === 0) this.#content.append(element("div", "moon-settings-no-results", `Nenhuma configuração encontrada para “${this.#search.value}”.`)); }
   #keys(event: KeyboardEvent): void { if (event.key === "Escape") { event.preventDefault(); void this.#close(false); return; } if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) this.options.store.redo(); else this.options.store.undo(); this.#render(); return; } if (event.key !== "Tab") return; const focusable = [...this.#modal.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter(node => !node.hidden); const first = focusable[0]; const last = focusable.at(-1); if (event.shiftKey && document.activeElement === first && last) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last && first) { event.preventDefault(); first.focus(); } }
   #say(message: string): void { this.#message.textContent = message; this.#message.classList.remove("is-error"); this.#live.textContent = ""; requestAnimationFrame(() => { this.#live.textContent = message; }); }

@@ -74,6 +74,7 @@ export class BrowserApplicationService {
   stopLoading(tabId: string): Promise<void> { return this.browser.stopLoading(tabId); }
   setBounds(windowId: string, bounds: Electron.Rectangle): void { this.browser.setBounds(windowId, bounds); }
   setContentVisible(windowId: string, visible: boolean): void { this.browser.setContentVisible(windowId, visible); }
+  setSearchTemplate(windowId: string, template: string): void { this.browser.setSearchTemplate(windowId, template); }
   ownsTab(tabId: string, windowId: string): boolean { return this.browser.ownsTab(tabId, windowId); }
   respondToPermission(windowId: string, requestId: string, granted: boolean): void { this.browser.respondToPermission(windowId, requestId, granted); }
 
@@ -123,6 +124,7 @@ export interface BrowserApplicationApi {
   stopLoading(tabId: string): Promise<void>;
   setBounds(windowId: string, bounds: Electron.Rectangle): void;
   setContentVisible(windowId: string, visible: boolean): void;
+  setSearchTemplate(windowId: string, template: string): void;
   ownsTab(tabId: string, windowId: string): boolean;
   respondToPermission(windowId: string, requestId: string, granted: boolean): void;
 }

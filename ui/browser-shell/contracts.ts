@@ -28,6 +28,9 @@ export interface Preferences { readonly accent: string; readonly wallpaper: stri
 export interface ManagedDownload { readonly id: string; readonly url: string; readonly filename: string; readonly savePath: string; readonly state: "in-progress" | "paused" | "completed" | "cancelled" | "failed"; readonly receivedBytes: number; readonly totalBytes: number; readonly speedBytesPerSecond: number; readonly percentage: number | null; readonly startedAt: number; readonly completedAt?: number; }
 export interface AdblockStatus { readonly phase: "loading" | "active" | "disabled" | "failed"; readonly enabled: boolean; readonly blockedCount: number; readonly error?: string; }
 export interface PermissionRequest { readonly id: string; readonly origin: string; readonly permission: string; }
+export interface MoonThemeSummary { readonly id: string; readonly packageId: string; readonly name: string; readonly version: string; readonly author: string; readonly trust: "official" | "local"; readonly active: boolean; readonly installedAt: number; }
+export interface MoonThemePayload { readonly summary: MoonThemeSummary; readonly tokens: import("../../packages/theme-contract/types.js").MoonThemeTokens; readonly wallpaperData?: string; }
+export interface MoonThemePreview extends MoonThemeSummary { readonly intentId: string; readonly description?: string; readonly changes: readonly string[]; readonly tokens: import("../../packages/theme-contract/types.js").MoonThemeTokens; readonly wallpaperData?: string; }
 export type Drawer = "workspaces" | "bookmarks" | "downloads" | "history" | "translate" | "notes" | "extensions" | "ai" | "security";
 
 export interface MoonBrowserBridge {
@@ -43,6 +46,7 @@ export interface MoonBrowserBridge {
   stop(tabId: string): Promise<void>;
   setBounds(bounds: { x: number; y: number; width: number; height: number }): Promise<void>;
   setContentVisible(visible: boolean): Promise<void>;
+  setSearchTemplate(template: string): Promise<void>;
   respondToPermission(requestId: string, granted: boolean): Promise<void>;
   getDownloads(): Promise<readonly ManagedDownload[]>;
   pauseDownload(id: string): Promise<void>;
@@ -59,6 +63,15 @@ export interface MoonBrowserBridge {
   importCustomization(): Promise<string | null>;
   fetchWallpaper(url: string): Promise<string>;
   migrateLegacyProfile(content: string): Promise<{ readonly migrated: boolean; readonly version: number }>;
+  importMoonTheme(): Promise<MoonThemePreview | null>;
+  confirmMoonTheme(intentId: string): Promise<MoonThemeSummary>;
+  cancelMoonTheme(intentId: string): Promise<void>;
+  listMoonThemes(): Promise<readonly MoonThemeSummary[]>;
+  applyMoonTheme(id: string): Promise<MoonThemePayload>;
+  activateMoonTheme(id: string): Promise<MoonThemeSummary>;
+  rollbackMoonTheme(packageId: string): Promise<MoonThemePayload>;
+  removeMoonTheme(id: string): Promise<void>;
+  exportMoonTheme(id: string): Promise<boolean>;
   onTabUpdated(listener: (update: TabUpdate) => void): () => void;
   onTabClosed(listener: (event: { readonly tabId: string }) => void): () => void;
   onDownloadsUpdated(listener: (downloads: readonly ManagedDownload[]) => void): () => void;
