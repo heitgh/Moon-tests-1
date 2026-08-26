@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — Personalização V2, Fase 1 (2026-08-25)
+
+### Adicionado
+
+- Central de personalização conectada à janela ativa, com preview, aplicar, cancelar, undo/redo e reset granular.
+- Perfis globais ou por workspace para aparência, layout, Home, tipografia e pesquisa.
+- Home configurável com grid, widgets, atalhos, cards e favoritos; toolbar reordenável por botões ou teclado.
+- Temas salvos, migração de preferências V1, exportação e importação versionada.
+- Persistência V2 coberta por testes de unidade, integração e reinício real do Electron.
+
+### Segurança
+
+- Importação rejeita versões, estruturas, URLs, cores e fontes inválidas antes de persistir.
+- Wallpaper remoto é opt-in: somente HTTPS público, com redirects, MIME e tamanho limitados; a CSP do renderer continua sem acesso remoto direto.
+
 ## 0.1.0 — Foundation Recovery (2026-08-24)
 
 ### Adicionado
