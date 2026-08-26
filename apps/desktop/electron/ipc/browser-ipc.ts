@@ -42,6 +42,9 @@ export function registerBrowserIpc(
   router.register("browser:close-tab", (event, payload: TabPayload) => browser.closeTab(ownedTab(event, payload)));
   router.register("browser:activate-tab", (event, payload: TabPayload) => browser.activateTab(ownedTab(event, payload)));
   router.register("browser:show-home", (event, payload: TabPayload) => browser.showHome(ownedTab(event, payload)));
+  router.register("browser:show-internal-page", (event, payload: NavigatePayload) => {
+    const tabId = ownedTab(event, payload); if (typeof payload.url !== "string" || payload.url.length > 200) throw new TypeError("Invalid internal URL"); return browser.showInternalPage(tabId, payload.url);
+  });
   router.register("browser:navigate", (event, payload: NavigatePayload) => {
     const tabId = ownedTab(event, payload);
     if (typeof payload.url !== "string" || payload.url.length > 16_384) throw new TypeError("Invalid URL");

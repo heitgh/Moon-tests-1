@@ -13,6 +13,7 @@ import type { ElectronAdblockService } from "../services/adblock-service.js";
 import type { ElectronDownloadManager } from "../services/download-manager.js";
 import type { Session } from "electron";
 import { openElectronContextMenu } from "./context-menu.js";
+import { isMoonSettingsUrl, normalizeMoonInternalUrl } from "../../../../packages/navigation/internal-routes.js";
 
 export interface BrowserNavigationState {
   readonly canGoBack: boolean;
@@ -36,6 +37,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   readonly #tabs = new Map<string, BrowserTab>();
   readonly #tabWindows = new Map<string, string>();
   readonly #homeTabs = new Set<string>();
+  readonly #internalHistory = new Map<string, { entries: string[]; index: number }>();
   readonly #activeTabs = new Map<string, string>();
   readonly #bounds = new Map<string, Electron.Rectangle>();
   readonly #contentVisible = new Map<string, boolean>();
@@ -93,11 +95,11 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     this.#installPermissionHandler(surface.view.webContents.session);
 
     const requestedUrl = options.url ?? "moon://newtab";
-    const isHome = requestedUrl === "moon://newtab" || requestedUrl === "about:blank";
+    const internalUrl = normalizeMoonInternalUrl(requestedUrl); const isHome = internalUrl !== null;
     const tab: BrowserTab = {
       id,
-      url: isHome ? "moon://newtab" : requestedUrl,
-      title: isHome ? "Nova guia" : "Carregando…",
+      url: internalUrl ?? requestedUrl,
+      title: internalUrl ? this.#internalTitle(internalUrl) : "Carregando…",
       active: false,
       loading: !isHome,
       workspaceId: options.workspaceId,
@@ -108,7 +110,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     this.#surfaces.set(id, surface);
     this.#tabs.set(id, tab);
     this.#tabWindows.set(id, windowId);
-    if (isHome) this.#homeTabs.add(id);
+    if (isHome) { this.#homeTabs.add(id); this.#internalHistory.set(id, { entries: [internalUrl!], index: 0 }); }
     this.#attachWebContentsEvents(id, windowId, surface);
 
     const bounds = this.#bounds.get(windowId);
@@ -143,6 +145,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     this.#tabs.delete(id);
     this.#tabWindows.delete(id);
     this.#homeTabs.delete(id);
+    this.#internalHistory.delete(id);
     if (wasActive) this.#activeTabs.delete(windowId);
 
     const host = this.windows.get(windowId);
@@ -173,14 +176,21 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   }
 
   async showHome(id: string): Promise<void> {
-    this.#homeTabs.add(id);
-    this.#replaceTab(id, { url: "moon://newtab", title: "Nova guia", loading: false });
-    this.#requireSurface(id).setVisible(false);
-    this.#emitUpdate(id);
+    await this.showInternalPage(id, "moon://newtab");
+  }
+
+  async showInternalPage(id: string, input: string, push = true): Promise<void> {
+    const url = normalizeMoonInternalUrl(input); if (!url) throw new TypeError("Rota interna do Moon inválida.");
+    this.#homeTabs.add(id); this.#replaceTab(id, { url, title: this.#internalTitle(url), loading: false }); this.#requireSurface(id).setVisible(false);
+    const history = this.#internalHistory.get(id) ?? { entries: [], index: -1 };
+    if (push) { history.entries.splice(history.index + 1); history.entries.push(url); history.index = history.entries.length - 1; }
+    this.#internalHistory.set(id, history); this.#emitUpdate(id);
   }
 
   async navigate(id: string, url: string, _options?: BrowserNavigationOptions): Promise<void> {
+    if (normalizeMoonInternalUrl(url)) return this.showInternalPage(id, url);
     this.#homeTabs.delete(id);
+    this.#internalHistory.delete(id);
     this.#replaceTab(id, { url, title: "Carregando…", loading: true });
     if (
       this.#requireTab(id).active &&
@@ -193,10 +203,12 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   }
 
   async goBack(id: string): Promise<void> {
+    const internal = this.#internalHistory.get(id); if (this.#homeTabs.has(id) && internal && internal.index > 0) { internal.index -= 1; await this.showInternalPage(id, internal.entries[internal.index]!, false); return; }
     new NavigationController(this.#requireSurface(id).view.webContents).back();
   }
 
   async goForward(id: string): Promise<void> {
+    const internal = this.#internalHistory.get(id); if (this.#homeTabs.has(id) && internal && internal.index < internal.entries.length - 1) { internal.index += 1; await this.showInternalPage(id, internal.entries[internal.index]!, false); return; }
     new NavigationController(this.#requireSurface(id).view.webContents).forward();
   }
 
@@ -274,6 +286,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
       this.#tabs.delete(id);
       this.#tabWindows.delete(id);
       this.#homeTabs.delete(id);
+      this.#internalHistory.delete(id);
     }
     this.#activeTabs.delete(windowId);
     this.#bounds.delete(windowId);
@@ -395,7 +408,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   #syncFromContents(id: string): void {
     const contents = this.#requireSurface(id).view.webContents;
     if (this.#homeTabs.has(id)) {
-      this.#replaceTab(id, { url: "moon://newtab", title: "Nova guia", loading: false });
+      const url = this.#requireTab(id).url; this.#replaceTab(id, { url, title: this.#internalTitle(url), loading: false });
       this.#emitUpdate(id);
       return;
     }
@@ -414,12 +427,12 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     if (!tab || !windowId || !surface) return;
     const host = this.windows.get(windowId);
     if (!host || host.webContents.isDestroyed()) return;
-    const navigation = surface.view.webContents.navigationHistory;
+    const navigation = surface.view.webContents.navigationHistory; const internal = this.#internalHistory.get(id); const isInternal = this.#homeTabs.has(id);
     const update: BrowserTabUpdate = {
       tab,
       navigation: {
-        canGoBack: navigation.canGoBack(),
-        canGoForward: navigation.canGoForward()
+        canGoBack: isInternal ? Boolean(internal && internal.index > 0) : navigation.canGoBack(),
+        canGoForward: isInternal ? Boolean(internal && internal.index < internal.entries.length - 1) : navigation.canGoForward()
       },
       ...(error ? { error } : {})
     };
@@ -432,6 +445,8 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   #replaceTab(id: string, patch: Partial<BrowserTab>): void {
     this.#tabs.set(id, { ...this.#requireTab(id), ...patch });
   }
+
+  #internalTitle(url: string): string { return isMoonSettingsUrl(url) ? "Configurações" : "Nova guia"; }
 
   #requireTab(id: string): BrowserTab {
     const tab = this.#tabs.get(id);

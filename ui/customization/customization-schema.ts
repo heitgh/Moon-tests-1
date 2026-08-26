@@ -1,6 +1,8 @@
-export const CUSTOMIZATION_VERSION = 2 as const;
-export const CUSTOMIZATION_STORAGE_KEY = "moon:customization:v2";
-export const CUSTOMIZATION_LAST_VALID_KEY = "moon:customization:last-valid:v2";
+export const CUSTOMIZATION_VERSION = 3 as const;
+export const CUSTOMIZATION_STORAGE_KEY = "moon:customization:v3";
+export const CUSTOMIZATION_LAST_VALID_KEY = "moon:customization:last-valid:v3";
+export const CUSTOMIZATION_V2_STORAGE_KEY = "moon:customization:v2";
+export const CUSTOMIZATION_V2_LAST_VALID_KEY = "moon:customization:last-valid:v2";
 
 export type ThemeMode = "system" | "light" | "dark" | "scheduled";
 export type Density = "compact" | "comfortable" | "touch" | "custom";
@@ -9,6 +11,8 @@ export type ToolbarPosition = "top" | "bottom";
 export type OmniboxPosition = "toolbar" | "bottom" | "sidebar";
 export type WallpaperType = "local" | "https" | "color" | "gradient";
 export type SettingsScope = "global" | "workspace";
+export type SettingsMode = "essential" | "all" | "advanced";
+export type WorkspaceVisibility = "always" | "collapsed" | "hover" | "auto-hide" | "home-only" | "hidden";
 export type HomePreset = "minimal" | "focus" | "study" | "work" | "dev" | "custom";
 export type HomeWidgetId = "clock" | "date" | "greeting" | "search" | "shortcuts" | "favorites" | "recentTabs" | "sessions" | "tasks" | "notes" | "downloads" | "focus" | "calendar" | "reading" | "performance";
 export type ToolbarItemId = "back" | "forward" | "reload" | "home" | "omnibox" | "bookmark" | "downloads" | "modules" | "ai" | "profile" | "menu" | "spacer";
@@ -39,7 +43,7 @@ export interface AppearanceSettings {
 export interface ToolbarItem { readonly id: ToolbarItemId; readonly visible: boolean; }
 export interface LayoutSettings {
   readonly density: Density; readonly uiScale: number;
-  readonly sidebar: { readonly position: SidebarPosition; readonly width: number; readonly iconSize: number; readonly spacing: number; readonly labels: "always" | "hover" | "never" };
+  readonly sidebar: { readonly position: SidebarPosition; readonly width: number; readonly iconSize: number; readonly spacing: number; readonly labels: "always" | "hover" | "never"; readonly autoHide: boolean; readonly hideDelay: number };
   readonly drawer: { readonly mode: "overlay" | "fixed"; readonly width: number };
   readonly toolbar: { readonly position: ToolbarPosition; readonly height: number; readonly autoHide: boolean; readonly items: readonly ToolbarItem[] };
   readonly omnibox: { readonly position: OmniboxPosition };
@@ -63,6 +67,8 @@ export interface TypographySettings {
 
 export interface SearchProvider { readonly id: string; readonly name: string; readonly template: string; readonly keyword?: string; }
 export interface SearchSettings { readonly defaultEngine: string; readonly providers: readonly SearchProvider[]; }
+export interface WorkspaceDisplaySettings { readonly visibility: WorkspaceVisibility; readonly position: "bar" | "sidebar" | "menu"; readonly compactSelector: boolean; }
+export interface FaviconSettings { readonly enabled: boolean; readonly persist: boolean; readonly ttlDays: number; }
 
 export interface CustomizationConfig {
   readonly appearance: AppearanceSettings;
@@ -70,18 +76,22 @@ export interface CustomizationConfig {
   readonly home: HomeSettings;
   readonly typography: TypographySettings;
   readonly search: SearchSettings;
+  readonly workspaceDisplay: WorkspaceDisplaySettings;
+  readonly favicons: FaviconSettings;
 }
 
 export interface SavedCustomizationTheme { readonly id: string; readonly name: string; readonly createdAt: number; readonly config: CustomizationConfig; }
-export interface CustomizationSchemaV2 {
+export interface CustomizationSchemaV3 {
   readonly version: typeof CUSTOMIZATION_VERSION;
   readonly revision: number;
   readonly scope: SettingsScope;
   readonly global: CustomizationConfig;
   readonly workspaces: Readonly<Record<string, CustomizationConfig>>;
   readonly themes: readonly SavedCustomizationTheme[];
+  readonly experience: { readonly mode: SettingsMode; readonly lastSection: string };
   readonly updatedAt: number;
 }
+export type CustomizationSchemaV2 = CustomizationSchemaV3;
 
 const LOCAL_WALLPAPER = "./assets/wallpapers/aurora.svg";
 export const WALLPAPER_PRESETS = [
@@ -109,7 +119,7 @@ export const DEFAULT_CUSTOMIZATION: CustomizationConfig = {
   },
   layout: {
     density: "comfortable", uiScale: 1,
-    sidebar: { position: "left", width: 56, iconSize: 18, spacing: 8, labels: "hover" },
+    sidebar: { position: "left", width: 56, iconSize: 18, spacing: 8, labels: "hover", autoHide: false, hideDelay: 600 },
     drawer: { mode: "fixed", width: 292 },
     toolbar: { position: "top", height: 48, autoHide: false, items: ([
       ["back", true], ["forward", true], ["reload", true], ["home", false], ["omnibox", true], ["bookmark", true],
@@ -124,18 +134,20 @@ export const DEFAULT_CUSTOMIZATION: CustomizationConfig = {
     { id: "google", name: "Google", template: "https://www.google.com/search?q={query}", keyword: "g" },
     { id: "brave", name: "Brave Search", template: "https://search.brave.com/search?q={query}", keyword: "b" },
     { id: "bing", name: "Bing", template: "https://www.bing.com/search?q={query}", keyword: "bi" }
-  ] }
+  ] },
+  workspaceDisplay: { visibility: "always", position: "bar", compactSelector: true },
+  favicons: { enabled: true, persist: true, ttlDays: 30 }
 };
 
-export function createDefaultCustomization(now = Date.now()): CustomizationSchemaV2 {
-  return { version: 2, revision: 0, scope: "global", global: clone(DEFAULT_CUSTOMIZATION), workspaces: {}, themes: [], updatedAt: now };
+export function createDefaultCustomization(now = Date.now()): CustomizationSchemaV3 {
+  return { version: 3, revision: 0, scope: "global", global: clone(DEFAULT_CUSTOMIZATION), workspaces: {}, themes: [], experience: { mode: "essential", lastSection: "appearance" }, updatedAt: now };
 }
 
 export function clone<T>(value: T): T { return structuredClone(value); }
 
-export function validateCustomization(value: unknown): CustomizationSchemaV2 {
+export function validateCustomization(value: unknown): CustomizationSchemaV3 {
   const root = object(value, "personalização");
-  if (root.version !== 2) throw new Error("Versão de personalização não suportada.");
+  if (root.version !== 2 && root.version !== 3) throw new Error("Versão de personalização não suportada.");
   const global = config(root.global, "global");
   const workspaceValues = object(root.workspaces, "workspaces");
   const workspaces: Record<string, CustomizationConfig> = {};
@@ -146,13 +158,16 @@ export function validateCustomization(value: unknown): CustomizationSchemaV2 {
   });
   if (new Set(themes.map(theme => theme.id)).size !== themes.length) throw new Error("IDs de temas duplicados não são permitidos.");
   const scope = oneOf(root.scope, ["global", "workspace"] as const, "escopo");
-  return { version: 2, revision: integer(root.revision, "revisão", 0, Number.MAX_SAFE_INTEGER), scope, global, workspaces, themes, updatedAt: integer(root.updatedAt, "data de atualização", 0, Number.MAX_SAFE_INTEGER) };
+  const experienceValue = root.version === 3 ? object(root.experience, "experiência") : { mode: "essential", lastSection: "appearance" };
+  const experience = { mode: oneOf(experienceValue.mode, ["essential", "all", "advanced"] as const, "modo das configurações"), lastSection: slug(experienceValue.lastSection, "última seção") };
+  return { version: 3, revision: integer(root.revision, "revisão", 0, Number.MAX_SAFE_INTEGER), scope, global, workspaces, themes, experience, updatedAt: integer(root.updatedAt, "data de atualização", 0, Number.MAX_SAFE_INTEGER) };
 }
 
 function config(value: unknown, name: string): CustomizationConfig {
   const item = object(value, name); const appearanceValue = object(item.appearance, `${name}.appearance`); const colorsValue = object(appearanceValue.colors, `${name}.colors`); const wallpaperValue = object(appearanceValue.wallpaper, `${name}.wallpaper`); const opacityValue = object(appearanceValue.opacity, `${name}.opacity`); const shapeValue = object(appearanceValue.shape, `${name}.shape`); const motionValue = object(appearanceValue.motion, `${name}.motion`); const glassValue = object(appearanceValue.glass, `${name}.glass`); const scheduleValue = object(appearanceValue.schedule, `${name}.schedule`);
   const layoutValue = object(item.layout, `${name}.layout`); const sidebarValue = object(layoutValue.sidebar, `${name}.sidebar`); const drawerValue = object(layoutValue.drawer, `${name}.drawer`); const toolbarValue = object(layoutValue.toolbar, `${name}.toolbar`); const omniboxValue = object(layoutValue.omnibox, `${name}.omnibox`); const statusValue = object(layoutValue.statusBar, `${name}.statusBar`);
   const homeValue = object(item.home, `${name}.home`); const typographyValue = object(item.typography, `${name}.typography`); const searchValue = object(item.search, `${name}.search`);
+  const workspaceDisplayValue = item.workspaceDisplay === undefined ? DEFAULT_CUSTOMIZATION.workspaceDisplay : object(item.workspaceDisplay, `${name}.workspaceDisplay`); const faviconsValue = item.favicons === undefined ? DEFAULT_CUSTOMIZATION.favicons : object(item.favicons, `${name}.favicons`);
   const wallpaperType = oneOf(wallpaperValue.type, ["local", "https", "color", "gradient"] as const, "tipo de wallpaper");
   const wallpaperSource = wallpaper(wallpaperType, wallpaperValue.source);
   const widgets = array(homeValue.widgets, "widgets", 30).map((candidate, index) => { const widget = object(candidate, `widget ${index + 1}`); return { id: oneOf(widget.id, HOME_WIDGET_IDS, "widget"), visible: bool(widget.visible, "widget.visible"), order: integer(widget.order, "widget.order", 0, 100), columns: integer(widget.columns, "widget.columns", 1, 4) as 1 | 2 | 3 | 4, opacity: number(widget.opacity, "widget.opacity", 0.2, 1) }; });
@@ -167,14 +182,16 @@ function config(value: unknown, name: string): CustomizationConfig {
   if (contrast(colors.text, colors.background) < 3) throw new Error("O contraste entre texto e fundo é insuficiente.");
   return {
     appearance: { mode: oneOf(appearanceValue.mode, ["system", "light", "dark", "scheduled"] as const, "modo"), schedule: { lightAt: time(scheduleValue.lightAt), darkAt: time(scheduleValue.darkAt) }, colors, wallpaper: { type: wallpaperType, source: wallpaperSource, ...(wallpaperValue.cachedData === undefined ? {} : { cachedData: wallpaperData(wallpaperValue.cachedData) }), fit: oneOf(wallpaperValue.fit, ["contain", "cover", "fill"] as const, "ajuste"), position: text(wallpaperValue.position, "posição", 40), repeat: bool(wallpaperValue.repeat, "repeat"), opacity: number(wallpaperValue.opacity, "opacity", 0, 1), blur: number(wallpaperValue.blur, "blur", 0, 40), brightness: number(wallpaperValue.brightness, "brightness", 0.2, 2), contrast: number(wallpaperValue.contrast, "contrast", 0.2, 2), saturation: number(wallpaperValue.saturation, "saturation", 0, 2), hue: number(wallpaperValue.hue, "hue", -180, 180), dim: number(wallpaperValue.dim, "dim", 0, 0.9) }, glass: { enabled: bool(glassValue.enabled, "glass.enabled"), intensity: number(glassValue.intensity, "glass.intensity", 0, 40) }, opacity: { sidebar: number(opacityValue.sidebar, "sidebar opacity", 0.2, 1), toolbar: number(opacityValue.toolbar, "toolbar opacity", 0.2, 1), cards: number(opacityValue.cards, "cards opacity", 0.2, 1), drawers: number(opacityValue.drawers, "drawers opacity", 0.2, 1), menus: number(opacityValue.menus, "menus opacity", 0.2, 1), modals: number(opacityValue.modals, "modals opacity", 0.2, 1) }, shape: { radius: number(shapeValue.radius, "radius", 0, 32), borderWidth: number(shapeValue.borderWidth, "borderWidth", 0, 4), shadow: number(shapeValue.shadow, "shadow", 0, 1), spacing: number(shapeValue.spacing, "spacing", 0.75, 1.5), elevation: number(shapeValue.elevation, "elevation", 0, 2) }, motion: { enabled: bool(motionValue.enabled, "motion.enabled"), speed: number(motionValue.speed, "motion.speed", 0.25, 2) } },
-    layout: { density: oneOf(layoutValue.density, ["compact", "comfortable", "touch", "custom"] as const, "density"), uiScale: number(layoutValue.uiScale, "uiScale", 0.8, 1.3), sidebar: { position: oneOf(sidebarValue.position, ["left", "right", "floating", "collapsed", "hidden"] as const, "sidebar.position"), width: number(sidebarValue.width, "sidebar.width", 44, 240), iconSize: number(sidebarValue.iconSize, "sidebar.iconSize", 14, 28), spacing: number(sidebarValue.spacing, "sidebar.spacing", 2, 18), labels: oneOf(sidebarValue.labels, ["always", "hover", "never"] as const, "sidebar.labels") }, drawer: { mode: oneOf(drawerValue.mode, ["overlay", "fixed"] as const, "drawer.mode"), width: number(drawerValue.width, "drawer.width", 220, 560) }, toolbar: { position: oneOf(toolbarValue.position, ["top", "bottom"] as const, "toolbar.position"), height: number(toolbarValue.height, "toolbar.height", 40, 76), autoHide: bool(toolbarValue.autoHide, "toolbar.autoHide"), items: toolbarItems }, omnibox: { position: oneOf(omniboxValue.position, ["toolbar", "bottom", "sidebar"] as const, "omnibox.position") }, statusBar: { visible: bool(statusValue.visible, "statusBar.visible") } },
+    layout: { density: oneOf(layoutValue.density, ["compact", "comfortable", "touch", "custom"] as const, "density"), uiScale: number(layoutValue.uiScale, "uiScale", 0.8, 1.3), sidebar: { position: oneOf(sidebarValue.position, ["left", "right", "floating", "collapsed", "hidden"] as const, "sidebar.position"), width: number(sidebarValue.width, "sidebar.width", 44, 240), iconSize: number(sidebarValue.iconSize, "sidebar.iconSize", 14, 28), spacing: number(sidebarValue.spacing, "sidebar.spacing", 2, 18), labels: oneOf(sidebarValue.labels, ["always", "hover", "never"] as const, "sidebar.labels"), autoHide: sidebarValue.autoHide === undefined ? false : bool(sidebarValue.autoHide, "sidebar.autoHide"), hideDelay: sidebarValue.hideDelay === undefined ? 600 : integer(sidebarValue.hideDelay, "sidebar.hideDelay", 100, 5000) }, drawer: { mode: oneOf(drawerValue.mode, ["overlay", "fixed"] as const, "drawer.mode"), width: number(drawerValue.width, "drawer.width", 220, 560) }, toolbar: { position: oneOf(toolbarValue.position, ["top", "bottom"] as const, "toolbar.position"), height: number(toolbarValue.height, "toolbar.height", 40, 76), autoHide: bool(toolbarValue.autoHide, "toolbar.autoHide"), items: toolbarItems }, omnibox: { position: oneOf(omniboxValue.position, ["toolbar", "bottom", "sidebar"] as const, "omnibox.position") }, statusBar: { visible: bool(statusValue.visible, "statusBar.visible") } },
     home: { preset: oneOf(homeValue.preset, ["minimal", "focus", "study", "work", "dev", "custom"] as const, "home.preset"), columns: integer(homeValue.columns, "home.columns", 1, 4) as 1 | 2 | 3 | 4, gap: number(homeValue.gap, "home.gap", 0, 48), maxWidth: number(homeValue.maxWidth, "home.maxWidth", 480, 1600), horizontalAlign: oneOf(homeValue.horizontalAlign, ["start", "center", "end"] as const, "home.horizontalAlign"), verticalAlign: oneOf(homeValue.verticalAlign, ["start", "center", "end"] as const, "home.verticalAlign"), padding: number(homeValue.padding, "home.padding", 0, 96), cardStyle: oneOf(homeValue.cardStyle, ["solid", "transparent", "glass"] as const, "home.cardStyle"), greeting: text(homeValue.greeting, "saudação", 160), widgets },
     typography: { family: font(typographyValue.family), baseSize: number(typographyValue.baseSize, "baseSize", 11, 22), scale: number(typographyValue.scale, "font scale", 0.8, 1.4), weight: integer(typographyValue.weight, "font weight", 300, 800), lineHeight: number(typographyValue.lineHeight, "lineHeight", 1.1, 2), letterSpacing: number(typographyValue.letterSpacing, "letterSpacing", -0.05, 0.15), uiSize: number(typographyValue.uiSize, "uiSize", 9, 20), omniboxSize: number(typographyValue.omniboxSize, "omniboxSize", 10, 22), tabSize: number(typographyValue.tabSize, "tabSize", 9, 18), homeSize: number(typographyValue.homeSize, "homeSize", 12, 28), iconScale: number(typographyValue.iconScale, "iconScale", 0.75, 1.5), labels: bool(typographyValue.labels, "labels") },
-    search: { defaultEngine: slug(searchValue.defaultEngine, "buscador padrão"), providers }
+    search: { defaultEngine: slug(searchValue.defaultEngine, "buscador padrão"), providers },
+    workspaceDisplay: { visibility: oneOf(workspaceDisplayValue.visibility, ["always", "collapsed", "hover", "auto-hide", "home-only", "hidden"] as const, "visibilidade das workspaces"), position: oneOf(workspaceDisplayValue.position, ["bar", "sidebar", "menu"] as const, "posição das workspaces"), compactSelector: bool(workspaceDisplayValue.compactSelector, "seletor compacto") },
+    favicons: { enabled: bool(faviconsValue.enabled, "favicons.enabled"), persist: bool(faviconsValue.persist, "favicons.persist"), ttlDays: integer(faviconsValue.ttlDays, "favicons.ttlDays", 1, 365) }
   };
 }
 
-export function migrateLegacyCustomization(storage: Pick<Storage, "getItem">, now = Date.now()): CustomizationSchemaV2 {
+export function migrateLegacyCustomization(storage: Pick<Storage, "getItem">, now = Date.now()): CustomizationSchemaV3 {
   const next = createDefaultCustomization(now); let legacy: Record<string, unknown> = {};
   try { const raw = storage.getItem("moon:preferences:v1"); if (raw) legacy = object(JSON.parse(raw), "preferências antigas"); } catch { legacy = {}; }
   const global = clone(next.global);
@@ -187,19 +204,19 @@ export function migrateLegacyCustomization(storage: Pick<Storage, "getItem">, no
   return validateCustomization({ ...next, global });
 }
 
-export function resolveCustomization(document: CustomizationSchemaV2, workspaceId?: string): CustomizationConfig {
+export function resolveCustomization(document: CustomizationSchemaV3, workspaceId?: string): CustomizationConfig {
   return document.scope === "workspace" && workspaceId && document.workspaces[workspaceId] ? document.workspaces[workspaceId] : document.global;
 }
 
-export function serializeCustomization(document: CustomizationSchemaV2, scope: "all" | "appearance" | "workspace" = "all", workspaceId?: string): string {
-  const payload = scope === "appearance" ? { format: "moon-customization", version: 2, scope, appearance: resolveCustomization(document, workspaceId).appearance } : scope === "workspace" ? { format: "moon-customization", version: 2, scope, workspaceId, config: resolveCustomization(document, workspaceId) } : { format: "moon-customization", version: 2, scope, document };
+export function serializeCustomization(document: CustomizationSchemaV3, scope: "all" | "appearance" | "workspace" = "all", workspaceId?: string): string {
+  const payload = scope === "appearance" ? { format: "moon-customization", version: 3, scope, appearance: resolveCustomization(document, workspaceId).appearance } : scope === "workspace" ? { format: "moon-customization", version: 3, scope, workspaceId, config: resolveCustomization(document, workspaceId) } : { format: "moon-customization", version: 3, scope, document };
   return JSON.stringify(payload, null, 2);
 }
 
-export function parseCustomizationImport(content: string, current: CustomizationSchemaV2, workspaceId?: string): CustomizationSchemaV2 {
+export function parseCustomizationImport(content: string, current: CustomizationSchemaV3, workspaceId?: string): CustomizationSchemaV3 {
   if (content.length > 2_000_000) throw new Error("O arquivo de personalização excede 2 MB.");
   let parsed: unknown; try { parsed = JSON.parse(content); } catch { throw new Error("O arquivo não contém JSON válido."); }
-  const payload = object(parsed, "arquivo"); if (payload.format !== "moon-customization" || payload.version !== 2) throw new Error("Formato de personalização não suportado.");
+  const payload = object(parsed, "arquivo"); if (payload.format !== "moon-customization" || (payload.version !== 2 && payload.version !== 3)) throw new Error("Formato de personalização não suportado.");
   if (payload.scope === "all") return validateCustomization(payload.document);
   const next = clone(current);
   if (payload.scope === "appearance") { const candidate = config({ ...resolveCustomization(current, workspaceId), appearance: payload.appearance }, "importação"); setResolved(next, workspaceId, candidate); }
@@ -208,7 +225,7 @@ export function parseCustomizationImport(content: string, current: Customization
   return validateCustomization({ ...next, revision: next.revision + 1, updatedAt: Date.now() });
 }
 
-export function setResolved(document: CustomizationSchemaV2, workspaceId: string | undefined, configValue: CustomizationConfig): void {
+export function setResolved(document: CustomizationSchemaV3, workspaceId: string | undefined, configValue: CustomizationConfig): void {
   if (document.scope === "workspace" && workspaceId) (document.workspaces as Record<string, CustomizationConfig>)[workspaceId] = configValue;
   else (document as { global: CustomizationConfig }).global = configValue;
 }

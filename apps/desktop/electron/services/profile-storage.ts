@@ -13,6 +13,7 @@ import { SettingsRepository } from "../../../../packages/storage/repositories/se
 import { ThemeRepository, type ThemeRecord } from "../../../../packages/storage/repositories/theme-repository.js";
 import { WallpaperRepository } from "../../../../packages/storage/repositories/wallpaper-repository.js";
 import { WorkspaceRepository } from "../../../../packages/storage/repositories/workspace-repository.js";
+import { normalizeMoonInternalUrl } from "../../../../packages/navigation/internal-routes.js";
 
 export interface RestorableBrowserTab {
   readonly id: string;
@@ -119,8 +120,8 @@ export class ProfileStorage {
     const tabs: RestorableBrowserTab[] = [];
     for (const candidate of value.tabs) {
       if (!candidate || typeof candidate.id !== "string" || candidate.id.length > 100 || typeof candidate.url !== "string" || candidate.url.length > 16_384 || typeof candidate.active !== "boolean") return [];
-      const normalizedUrl = candidate.url === "about:blank" ? "moon://newtab" : candidate.url;
-      if (normalizedUrl !== "moon://newtab") {
+      const normalizedUrl = normalizeMoonInternalUrl(candidate.url) ?? candidate.url;
+      if (!normalizeMoonInternalUrl(normalizedUrl)) {
         try { if (!["http:", "https:"].includes(new URL(normalizedUrl).protocol)) return []; }
         catch { return []; }
       }

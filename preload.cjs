@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("moonBrowser", Object.freeze({
   closeTab: tabId => invoke("browser:close-tab", { tabId }),
   activateTab: tabId => invoke("browser:activate-tab", { tabId }),
   showHome: tabId => invoke("browser:show-home", { tabId }),
+  showInternalPage: (tabId, url) => invoke("browser:show-internal-page", { tabId, url }),
   navigate: (tabId, url) => invoke("browser:navigate", { tabId, url }),
   back: tabId => invoke("browser:back", { tabId }),
   forward: tabId => invoke("browser:forward", { tabId }),

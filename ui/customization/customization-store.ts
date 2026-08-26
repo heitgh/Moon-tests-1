@@ -1,6 +1,8 @@
 import {
   CUSTOMIZATION_LAST_VALID_KEY,
   CUSTOMIZATION_STORAGE_KEY,
+  CUSTOMIZATION_V2_LAST_VALID_KEY,
+  CUSTOMIZATION_V2_STORAGE_KEY,
   clone,
   createDefaultCustomization,
   migrateLegacyCustomization,
@@ -12,6 +14,7 @@ import {
   type CustomizationConfig,
   type CustomizationSchemaV2,
   type SavedCustomizationTheme,
+  type SettingsMode,
   type SettingsScope
 } from "./customization-schema.js";
 import type { MoonThemeTokens } from "../../packages/theme-contract/types.js";
@@ -44,18 +47,18 @@ export class CustomizationStore {
   readonly loadResult: CustomizationLoadResult;
 
   static load(storage: Storage = localStorage): CustomizationStore {
-    const raw = storage.getItem(CUSTOMIZATION_STORAGE_KEY);
+    const currentRaw = storage.getItem(CUSTOMIZATION_STORAGE_KEY); const legacyRaw = storage.getItem(CUSTOMIZATION_V2_STORAGE_KEY); const raw = currentRaw ?? legacyRaw;
     if (!raw) {
       const migrated = migrateLegacyCustomization(storage);
       persist(storage, migrated);
-      return new CustomizationStore(storage, migrated, { recovered: false, message: "Preferências anteriores migradas para V2." });
+      return new CustomizationStore(storage, migrated, { recovered: false, message: "Preferências anteriores migradas para o Moon Settings V3." });
     }
     try {
       const document = validateCustomization(JSON.parse(raw));
-      storage.setItem(CUSTOMIZATION_LAST_VALID_KEY, JSON.stringify(document));
-      return new CustomizationStore(storage, document, { recovered: false });
+      if (!currentRaw && legacyRaw) persist(storage, document); else storage.setItem(CUSTOMIZATION_LAST_VALID_KEY, JSON.stringify(document));
+      return new CustomizationStore(storage, document, { recovered: false, ...(!currentRaw && legacyRaw ? { message: "Personalização V2 migrada para V3 sem alterar o original." } : {}) });
     } catch (error) {
-      const backup = storage.getItem(CUSTOMIZATION_LAST_VALID_KEY);
+      const backup = storage.getItem(CUSTOMIZATION_LAST_VALID_KEY) ?? storage.getItem(CUSTOMIZATION_V2_LAST_VALID_KEY);
       if (backup) {
         try {
           const recovered = validateCustomization(JSON.parse(backup));
@@ -92,6 +95,11 @@ export class CustomizationStore {
   setScope(scope: SettingsScope): void {
     if (scope === this.#document.scope) return;
     this.#mutate(document => { (document as { scope: SettingsScope }).scope = scope; if (scope === "workspace" && this.#workspaceId && !document.workspaces[this.#workspaceId]) (document.workspaces as Record<string, CustomizationConfig>)[this.#workspaceId] = clone(document.global); }, "scope");
+  }
+
+  setExperience(mode: SettingsMode, lastSection = this.#document.experience.lastSection): void {
+    const update = (document: CustomizationSchemaV2): CustomizationSchemaV2 => validateCustomization({ ...document, experience: { mode, lastSection }, updatedAt: Date.now() });
+    this.#document = update(this.#document); if (this.#previewSnapshot) this.#previewSnapshot = update(this.#previewSnapshot); this.#save(); this.#emit("update");
   }
 
   update(mutator: (config: CustomizationConfig) => void): boolean {

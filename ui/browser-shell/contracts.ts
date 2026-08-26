@@ -39,6 +39,7 @@ export interface MoonBrowserBridge {
   closeTab(tabId: string): Promise<void>;
   activateTab(tabId: string): Promise<void>;
   showHome(tabId: string): Promise<void>;
+  showInternalPage(tabId: string, url: string): Promise<void>;
   navigate(tabId: string, url: string): Promise<void>;
   back(tabId: string): Promise<void>;
   forward(tabId: string): Promise<void>;

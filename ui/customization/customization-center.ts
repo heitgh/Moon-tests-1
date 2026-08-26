@@ -12,6 +12,9 @@ import {
 } from "./customization-schema.js";
 import { CustomizationStore } from "./customization-store.js";
 import type { MoonThemePayload, MoonThemePreview, MoonThemeSummary, Shortcut } from "../browser-shell/contracts.js";
+import { LiveBrowserPreview } from "./live-browser-preview.js";
+import { searchSettings, type SettingsSection } from "./settings-catalog.js";
+import type { SettingsMode } from "./customization-schema.js";
 
 export interface CustomizationCenterOptions {
   readonly store: CustomizationStore;
@@ -29,6 +32,10 @@ export interface CustomizationCenterOptions {
   readonly onRollbackMoonTheme: (packageId: string) => Promise<MoonThemePayload>;
   readonly onRemoveMoonTheme: (id: string) => Promise<void>;
   readonly onExportMoonTheme: (id: string) => Promise<boolean>;
+  readonly presentation?: "modal" | "page";
+  readonly initialSection?: SettingsSection;
+  readonly onOpenPage?: (section: SettingsSection) => void | Promise<void>;
+  readonly onNavigateSection?: (section: SettingsSection, mode: SettingsMode) => void | Promise<void>;
   readonly shortcuts: () => readonly Shortcut[];
   readonly onAddShortcut: (shortcut: Omit<Shortcut, "id">) => void;
   readonly onRemoveShortcut: (id: string) => void;
@@ -69,14 +76,18 @@ export class CustomizationCenter {
   readonly #scope = element("select", "moon-select moon-scope-select");
   readonly #message = element("div", "moon-settings-message");
   readonly #live = element("div", "moon-visually-hidden");
+  readonly #preview = new LiveBrowserPreview();
   readonly #undo = button("moon-secondary-button", "Desfazer", "back");
   readonly #redo = button("moon-secondary-button", "Refazer", "forward");
-  #active: SectionId = "appearance";
+  #active: SectionId;
+  #mode: SettingsMode;
   #moonThemes: readonly MoonThemeSummary[] = [];
   #pendingMoonTheme: MoonThemePreview | undefined;
   #selectedMoonThemeId: string | undefined;
 
   constructor(readonly options: CustomizationCenterOptions) {
+    this.#active = options.initialSection ?? options.store.document.experience.lastSection as SectionId;
+    this.#mode = options.store.document.experience.mode;
     options.store.beginPreview();
     this.#build();
     this.#render();
@@ -87,23 +98,25 @@ export class CustomizationCenter {
   cancel(): void { void this.#close(false); }
 
   #build(): void {
-    this.element.dataset.testid = "customization-center";
-    this.#modal.setAttribute("role", "dialog"); this.#modal.setAttribute("aria-modal", "true"); this.#modal.setAttribute("aria-labelledby", "moon-customization-title");
+    this.element.dataset.testid = "customization-center"; this.element.dataset.presentation = this.options.presentation ?? "modal";
+    this.#modal.setAttribute("role", this.options.presentation === "page" ? "region" : "dialog"); if (this.options.presentation !== "page") this.#modal.setAttribute("aria-modal", "true"); this.#modal.setAttribute("aria-labelledby", "moon-customization-title");
     const brand = element("div", "moon-settings-brand"); brand.append(icon("moon"), element("span", "", "Moon Studio"));
     const title = element("h2", "", "Personalização"); title.id = "moon-customization-title";
     this.#search.type = "search"; this.#search.placeholder = "Buscar configuração"; this.#search.setAttribute("aria-label", "Buscar nas configurações"); this.#search.addEventListener("input", () => this.#render());
-    this.#sidebar.append(brand, title, this.#search);
+    const modes = element("div", "moon-settings-modes"); (["essential", "all", "advanced"] as const).forEach(mode => { const labels = { essential: "Essencial", all: "Todas", advanced: "Avançado" }; const control = button("moon-settings-mode", labels[mode]); control.dataset.mode = mode; control.addEventListener("click", () => { this.#mode = mode; this.options.store.setExperience(mode, this.#active); this.#search.value = ""; this.#render(); void this.options.onNavigateSection?.(this.#active, mode); }); modes.append(control); });
+    this.#sidebar.append(brand, title, modes, this.#search);
     for (const [id, label, iconName, description] of SECTIONS) {
       const nav = button("moon-settings-nav", label, iconName); nav.dataset.section = id;
       const copy = element("span", "moon-settings-nav-copy"); copy.append(element("strong", "", label), element("small", "", description)); nav.append(copy);
-      nav.addEventListener("click", () => { this.#active = id; this.#search.value = ""; this.#render(); }); this.#sidebar.append(nav);
+      nav.addEventListener("click", () => { this.#active = id; this.options.store.setExperience(this.#mode, id); this.#search.value = ""; this.#render(); void this.options.onNavigateSection?.(id, this.#mode); }); this.#sidebar.append(nav);
     }
+    if (this.options.presentation !== "page" && this.options.onOpenPage) { const openPage = button("moon-settings-open-page", "Abrir configurações em página completa", "chevron"); openPage.append(element("span", "", "Abrir em página completa")); openPage.addEventListener("click", () => void this.options.onOpenPage?.(this.#active)); this.#sidebar.append(openPage); }
     this.#scope.append(option("global", "Aplicar globalmente"), option("workspace", `Somente ${this.options.workspaceName}`));
     this.#scope.setAttribute("aria-label", "Escopo das configurações");
     this.#scope.addEventListener("change", () => { this.options.store.setScope(this.#scope.value as "global" | "workspace"); this.#say(`Escopo: ${this.#scope.selectedOptions[0]?.textContent ?? ""}.`); this.#render(); });
     const breadcrumbs = element("div", "moon-settings-breadcrumbs"); breadcrumbs.append(element("span", "", "Configurações"), element("span", "", "/"), this.#crumb);
     const topbar = element("header", "moon-settings-topbar"); topbar.append(breadcrumbs, this.#scope);
-    const close = button("moon-settings-close", "Fechar e cancelar alterações", "close"); close.addEventListener("click", () => void this.#close(false));
+    const close = button("moon-settings-close", this.options.presentation === "page" ? "Voltar à página inicial" : "Fechar e cancelar alterações", "close"); close.addEventListener("click", () => void this.#close(false));
     this.#message.setAttribute("role", "status"); this.#live.setAttribute("aria-live", "polite");
     const footer = element("footer", "moon-settings-footer");
     this.#undo.append(element("span", "", "Desfazer")); this.#redo.append(element("span", "", "Refazer"));
@@ -120,23 +133,42 @@ export class CustomizationCenter {
 
   #render(): void {
     const section = SECTIONS.find(([id]) => id === this.#active)!;
-    const query = this.#search.value.trim(); this.#crumb.textContent = query ? "Resultados da busca" : section[1]; this.#scope.value = this.options.store.document.scope;
+    const query = this.#search.value.trim(); this.#crumb.textContent = query ? "Resultados da busca" : this.#mode === "essential" ? "Essencial" : this.#mode === "all" ? "Todas as configurações" : section[1]; this.#scope.value = this.options.store.document.scope;
     this.#sidebar.querySelectorAll<HTMLElement>(".moon-settings-nav").forEach(node => node.classList.toggle("is-active", node.dataset.section === this.#active));
+    this.#sidebar.querySelectorAll<HTMLElement>(".moon-settings-mode").forEach(node => node.classList.toggle("is-active", node.dataset.mode === this.#mode));
     this.#undo.disabled = !this.options.store.canUndo; this.#redo.disabled = !this.options.store.canRedo;
     this.#content.replaceChildren(); this.#content.dataset.searching = query ? "true" : "false";
-    const config = this.options.store.config;
-    if (query) {
-      const active = this.#active;
-      for (const id of SECTIONS.map(([sectionId]) => sectionId)) { this.#active = id; if (id === "appearance") this.#appearance(config); else if (id === "layout") this.#layout(config); else if (id === "home") this.#home(config); else if (id === "typography") this.#typography(config); else if (id === "search") this.#searchPage(config); else this.#data(); }
-      this.#active = active; this.#filter(); return;
-    }
-    if (this.#active === "appearance") this.#appearance(config);
-    else if (this.#active === "layout") this.#layout(config);
-    else if (this.#active === "home") this.#home(config);
-    else if (this.#active === "typography") this.#typography(config);
-    else if (this.#active === "search") this.#searchPage(config);
-    else this.#data();
+    const config = this.options.store.config; this.#preview.apply(config);
+    if (query) { this.#searchResults(query); return; }
+    if (this.#mode === "essential") this.#essential(config);
+    else if (this.#mode === "all") { this.#content.append(this.#preview.element); for (const id of SECTIONS.map(([sectionId]) => sectionId)) this.#renderSection(id, config); }
+    else { this.#content.append(this.#preview.element); this.#renderSection(this.#active, config); }
     this.#filter();
+  }
+
+  #renderSection(id: SectionId, config: CustomizationConfig): void {
+    const marker = element("span", "moon-settings-anchor"); marker.id = `moon-settings-${id}`; marker.tabIndex = -1; this.#content.append(marker);
+    const previous = this.#active; this.#active = id;
+    if (id === "appearance") this.#appearance(config); else if (id === "layout") this.#layout(config); else if (id === "home") this.#home(config); else if (id === "typography") this.#typography(config); else if (id === "search") this.#searchPage(config); else this.#data();
+    this.#active = previous;
+  }
+
+  #searchResults(query: string): void {
+    const results = searchSettings(query); const heading = element("header", "moon-settings-page-intro"); heading.append(element("h1", "", "Resultados"), element("p", "", results.length ? `${results.length} configurações encontradas por título, descrição ou intenção.` : `Nada encontrado para “${query}”.`)); this.#content.append(heading);
+    const list = element("div", "moon-settings-results");
+    for (const result of results) { const item = button("moon-settings-result", `Abrir ${result.title}`); const copy = element("span", "moon-list-copy"); copy.append(element("small", "", `${result.category} · ${result.level === "essential" ? "Essencial" : "Avançado"}`), element("strong", "", result.title), element("p", "", result.description)); item.append(copy, icon("chevron")); item.addEventListener("click", () => { this.#active = result.section; this.#mode = result.level; this.options.store.setExperience(this.#mode, result.section); this.#search.value = ""; this.#render(); requestAnimationFrame(() => { const target = this.#content.querySelector<HTMLElement>(`#moon-settings-${result.section}`); target?.focus(); target?.parentElement?.classList.add("is-highlighted"); }); }); list.append(item); }
+    this.#content.append(list);
+  }
+
+  #essential(config: CustomizationConfig): void {
+    this.#intro("Personalize o essencial", "Decisões visuais rápidas, com termos simples e preview antes de confirmar."); this.#content.append(this.#preview.element);
+    const appearance = this.#group("Aparência rápida", "Escolha como o Moon deve parecer.", "claro escuro automático tema"); const modes = element("div", "moon-visual-options"); (["light", "dark", "system"] as const).forEach(mode => { const labels = { light: "Claro", dark: "Escuro", system: "Automático" }; const card = button(`moon-visual-choice${config.appearance.mode === mode ? " is-active" : ""}`, labels[mode], mode === "dark" ? "moon" : mode === "light" ? "palette" : "settings"); card.append(element("strong", "", labels[mode])); card.addEventListener("click", () => { this.#set("appearance.mode", mode); this.#render(); }); modes.append(card); }); appearance.append(modes);
+    const density = this.#group("Conforto da interface", "Quatro pontos de partida; ajustes manuais continuam no modo Avançado.", "densidade compacto equilibrado confortável toque"); const presets = element("div", "moon-visual-options"); (["compact", "comfortable", "touch"] as const).forEach(value => { const labels = { compact: "Compacto", comfortable: "Equilibrado", touch: "Toque" }; const card = button(`moon-visual-choice${config.layout.density === value ? " is-active" : ""}`, labels[value], "grid"); card.append(element("strong", "", labels[value])); card.addEventListener("click", () => this.#density(value)); presets.append(card); }); const comfortable = button("moon-visual-choice", "Confortável", "grid"); comfortable.append(element("strong", "", "Confortável")); comfortable.addEventListener("click", () => { this.options.store.update(next => { (next.layout as Mutable<typeof next.layout>).density = "custom"; (next.layout as Mutable<typeof next.layout>).uiScale = 1.1; }); this.#render(); }); presets.append(comfortable); density.append(presets);
+    const sidebar = this.#group("Sidebar", "Posição e largura com recuperação sempre disponível por Ctrl+,.", "sidebar posição largura grossura"); const positions = element("div", "moon-visual-options"); (["left", "right", "collapsed"] as const).forEach(value => { const labels = { left: "Esquerda", right: "Direita", collapsed: "Recolhida" }; const card = button(`moon-visual-choice${config.layout.sidebar.position === value ? " is-active" : ""}`, labels[value], "grid"); card.append(element("strong", "", labels[value])); card.addEventListener("click", () => { this.#set("layout.sidebar.position", value); this.#render(); }); positions.append(card); }); sidebar.append(positions, this.#select("Largura", String(config.layout.sidebar.width), [["44", "Estreita"], ["56", "Padrão"], ["88", "Larga"]], value => this.#set("layout.sidebar.width", Number(value))));
+    const workspace = this.#group("Workspaces", "Escolha quanto espaço elas ocupam sem perder o acesso pelo teclado ou menu.", "workspaces esconder espaços visibilidade"); workspace.append(this.#select("Exibição", config.workspaceDisplay.visibility, [["always", "Sempre visíveis"], ["collapsed", "Seletor compacto"], ["hover", "Ao passar o mouse"], ["home-only", "Somente na Home"], ["hidden", "Ocultas, acessíveis por Ctrl+Shift+W"]], value => { this.#set("workspaceDisplay.visibility", value); this.#render(); }));
+    const home = this.#group("Home", "Escolha um ponto de partida para a nova aba.", "home nova aba widgets"); const homes = element("div", "moon-visual-options"); (["minimal", "focus", "study", "work"] as const).forEach(value => { const labels = { minimal: "Minimalista", focus: "Foco", study: "Estudo", work: "Trabalho" }; const card = button(`moon-visual-choice${config.home.preset === value ? " is-active" : ""}`, labels[value], "home"); card.append(element("strong", "", labels[value])); card.addEventListener("click", () => this.#homePreset(value)); homes.append(card); }); home.append(homes);
+    const search = this.#group("Pesquisa e privacidade", "Buscador e símbolos dos sites, com cache local opcional.", "buscador privacidade favicon"); search.append(this.#select("Buscador", config.search.defaultEngine, config.search.providers.map(provider => [provider.id, provider.name] as const), value => this.#set("search.defaultEngine", value)), this.#toggle("Exibir símbolos dos sites", config.favicons.enabled, value => this.#set("favicons.enabled", value)));
+    this.#content.append(appearance, density, sidebar, workspace, home, search);
   }
 
   #appearance(config: CustomizationConfig): void {

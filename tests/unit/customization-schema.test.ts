@@ -10,6 +10,7 @@ import {
   validateCustomization
 } from "../../ui/customization/customization-schema.js";
 import { CustomizationStore } from "../../ui/customization/customization-store.js";
+import { migrateCustomizationV2ToV3 } from "../../ui/customization/customization-v3-migration.js";
 
 class MemoryStorage implements Storage {
   readonly #values = new Map<string, string>();
@@ -21,10 +22,10 @@ class MemoryStorage implements Storage {
   setItem(key: string, value: string): void { this.#values.set(key, value); }
 }
 
-describe("CustomizationSchemaV2", () => {
+describe("CustomizationSchemaV3", () => {
   it("creates a complete, valid and versioned default", () => {
     const document = validateCustomization(createDefaultCustomization(123));
-    expect(document.version).toBe(2);
+    expect(document.version).toBe(3);
     expect(document.global.appearance.colors).toMatchObject({ background: "#0a0c11", accent: "#8a5cf5", danger: "#f43f5e" });
     expect(document.global.layout.toolbar.items).toHaveLength(12);
     expect(document.global.home.widgets).toHaveLength(15);
@@ -55,13 +56,28 @@ describe("CustomizationSchemaV2", () => {
     for (const scope of ["all", "appearance", "workspace"] as const) {
       const serialized = serializeCustomization(current, scope, "research");
       const imported = parseCustomizationImport(serialized, createDefaultCustomization(200), "research");
-      expect(imported.version).toBe(2);
+      expect(imported.version).toBe(3);
       expect(resolveCustomization(imported, "research").appearance.colors.accent).toBe("#8a5cf5");
     }
   });
 });
 
+describe("CustomizationSchemaV3 migration", () => {
+  it("adds only safe V3 defaults while preserving every V2 value", () => {
+    const source = createDefaultCustomization(321); (source.global.layout.sidebar as { width: number }).width = 144;
+    const migrated = migrateCustomizationV2ToV3(source);
+    expect(migrated.version).toBe(3); expect(migrated.global.layout.sidebar.width).toBe(144);
+    expect(migrated.global.layout.sidebar).toMatchObject({ autoHide: false, hideDelay: 600 });
+    expect(migrated.global.workspaceDisplay.visibility).toBe("always"); expect(migrated.global.favicons.ttlDays).toBe(30);
+  });
+});
+
 describe("CustomizationStore", () => {
+  it("migrates the V2 key without deleting or mutating its original value", () => {
+    const storage = new MemoryStorage(); const legacy = { ...createDefaultCustomization(77), version: 2 }; delete (legacy as Partial<typeof legacy>).experience;
+    const original = JSON.stringify(legacy); storage.setItem("moon:customization:v2", original); const store = CustomizationStore.load(storage);
+    expect(store.document.version).toBe(3); expect(store.document.updatedAt).toBe(77); expect(storage.getItem("moon:customization:v2")).toBe(original); expect(storage.getItem(CUSTOMIZATION_STORAGE_KEY)).not.toBeNull();
+  });
   it("recovers the last valid document when the primary value is corrupt", () => {
     const storage = new MemoryStorage(); const valid = createDefaultCustomization(42);
     storage.setItem(CUSTOMIZATION_STORAGE_KEY, "{broken"); storage.setItem(CUSTOMIZATION_LAST_VALID_KEY, JSON.stringify(valid));

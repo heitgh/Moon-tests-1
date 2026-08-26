@@ -67,6 +67,7 @@ export class BrowserApplicationService {
   async closeTab(tabId: string): Promise<void> { const windowId = this.tabs.require(tabId).model.windowId; await this.tabs.close(tabId); this.#schedulePersistence(windowId); }
   async activateTab(tabId: string): Promise<void> { await this.tabs.activate(tabId); }
   showHome(tabId: string): Promise<void> { return this.browser.showHome(tabId); }
+  showInternalPage(tabId: string, url: string): Promise<void> { return this.browser.showInternalPage(tabId, url); }
   navigate(tabId: string, url: string): Promise<void> { return this.browser.navigate(tabId, url); }
   goBack(tabId: string): Promise<void> { return this.browser.goBack(tabId); }
   goForward(tabId: string): Promise<void> { return this.browser.goForward(tabId); }
@@ -117,6 +118,7 @@ export interface BrowserApplicationApi {
   closeTab(tabId: string): Promise<void>;
   activateTab(tabId: string): Promise<void>;
   showHome(tabId: string): Promise<void>;
+  showInternalPage(tabId: string, url: string): Promise<void>;
   navigate(tabId: string, url: string): Promise<void>;
   goBack(tabId: string): Promise<void>;
   goForward(tabId: string): Promise<void>;

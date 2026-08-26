@@ -119,7 +119,7 @@ describe("Moon browser shell", () => {
     const mode = [...document.querySelectorAll(".moon-field")].find(field => field.firstElementChild?.textContent === "Modo")?.querySelector("select") as HTMLSelectElement;
     mode.value = before === "light" ? "dark" : "light"; mode.dispatchEvent(new Event("change", { bubbles: true })); await flush();
     expect(document.documentElement.dataset.moonTheme).not.toBe(before);
-    expect(JSON.parse(localStorage.getItem("moon:customization:v2") ?? "{}").version).toBe(2);
+    expect(JSON.parse(localStorage.getItem("moon:customization:v3") ?? "{}").version).toBe(3);
     (document.querySelector('[aria-label="Cancelar mudanças"]') as HTMLButtonElement).click(); await flush();
     expect(document.documentElement.dataset.moonTheme).toBe(before);
   });
@@ -132,9 +132,9 @@ describe("Moon browser shell", () => {
     search.value = ""; search.dispatchEvent(new Event("input", { bubbles: true }));
     (document.querySelector('[aria-label="Layout e densidade"]') as HTMLButtonElement).click(); await flush();
     const first = document.querySelector(".moon-order-row") as HTMLElement;
-    const initial = JSON.parse(localStorage.getItem("moon:customization:v2") ?? "{}").global.layout.toolbar.items.map((item: { id: string }) => item.id);
+    const initial = JSON.parse(localStorage.getItem("moon:customization:v3") ?? "{}").global.layout.toolbar.items.map((item: { id: string }) => item.id);
     first.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", altKey: true, bubbles: true })); await flush();
-    const reordered = JSON.parse(localStorage.getItem("moon:customization:v2") ?? "{}").global.layout.toolbar.items.map((item: { id: string }) => item.id);
+    const reordered = JSON.parse(localStorage.getItem("moon:customization:v3") ?? "{}").global.layout.toolbar.items.map((item: { id: string }) => item.id);
     expect(reordered[0]).toBe(initial[1]); expect(reordered[1]).toBe(initial[0]);
     expect(document.querySelector(".moon-visually-hidden")?.textContent).toContain("posição");
     (document.querySelector('[aria-label="Cancelar mudanças"]') as HTMLButtonElement).click(); await flush();
