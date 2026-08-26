@@ -4,6 +4,7 @@ export interface Tab {
   readonly title: string;
   readonly active: boolean;
   readonly loading: boolean;
+  readonly faviconUrl?: string;
   readonly workspaceId?: string;
   readonly private: boolean;
 }
@@ -61,8 +62,10 @@ export interface MoonBrowserBridge {
   exportProductData(content: string): Promise<boolean>;
   importProductData(): Promise<string | null>;
   exportCustomization(content: string): Promise<boolean>;
+  exportSettingsDiagnostic(content: string): Promise<boolean>;
   importCustomization(): Promise<string | null>;
   fetchWallpaper(url: string): Promise<string>;
+  fetchFavicon(url: string): Promise<string>;
   migrateLegacyProfile(content: string): Promise<{ readonly migrated: boolean; readonly version: number }>;
   importMoonTheme(): Promise<MoonThemePreview | null>;
   confirmMoonTheme(intentId: string): Promise<MoonThemeSummary>;

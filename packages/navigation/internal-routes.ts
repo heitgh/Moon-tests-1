@@ -11,3 +11,27 @@ export function normalizeMoonInternalUrl(input: string): string | null {
 }
 
 export function isMoonSettingsUrl(input: string): boolean { return normalizeMoonInternalUrl(input)?.startsWith("moon://settings/") === true; }
+
+export class MoonInternalHistory {
+  readonly #entries: string[] = [];
+  #index = -1;
+
+  constructor(initial?: string) { if (initial) this.push(initial); }
+
+  get current(): string | undefined { return this.#entries[this.#index]; }
+  get canGoBack(): boolean { return this.#index > 0; }
+  get canGoForward(): boolean { return this.#index >= 0 && this.#index < this.#entries.length - 1; }
+  get length(): number { return this.#entries.length; }
+
+  push(input: string): string {
+    const url = normalizeMoonInternalUrl(input); if (!url) throw new TypeError("Rota interna do Moon inválida.");
+    if (this.current === url) return url;
+    this.#entries.splice(this.#index + 1);
+    this.#entries.push(url);
+    this.#index = this.#entries.length - 1;
+    return url;
+  }
+
+  back(): string | undefined { if (!this.canGoBack) return undefined; this.#index -= 1; return this.current; }
+  forward(): string | undefined { if (!this.canGoForward) return undefined; this.#index += 1; return this.current; }
+}

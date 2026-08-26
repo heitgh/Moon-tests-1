@@ -11,13 +11,15 @@ export class TabStrip {
 
   constructor(readonly actions: TabStripActions) {}
 
-  render(tabs: readonly Tab[], activeTabId: string | undefined): void {
+  render(tabs: readonly Tab[], activeTabId: string | undefined, favicons: ReadonlyMap<string, string> = new Map()): void {
     this.element.replaceChildren();
     for (const tab of tabs) {
       const label = tab.title || "Nova aba";
       const tabButton = button(`moon-tab${tab.id === activeTabId ? " is-active" : ""}`, label);
       const favicon = element("span", `moon-tab-favicon${tab.loading ? " is-loading" : ""}`);
-      favicon.append(icon(tab.url === "moon://newtab" ? "moon" : "globe"));
+      const faviconData = favicons.get(tab.id);
+      if (faviconData) { const image = document.createElement("img"); image.src = faviconData; image.alt = ""; image.draggable = false; favicon.append(image); }
+      else favicon.append(icon(tab.url === "moon://newtab" ? "moon" : "globe"));
 
       const close = button("moon-tab-close", `Fechar ${tab.title || "aba"}`, "close");
       close.addEventListener("click", event => {

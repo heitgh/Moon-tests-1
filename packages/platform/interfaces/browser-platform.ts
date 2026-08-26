@@ -13,6 +13,7 @@ export interface BrowserTab {
   readonly title: string;
   readonly active: boolean;
   readonly loading: boolean;
+  readonly faviconUrl?: string;
   readonly workspaceId?: string;
   readonly sessionId?: string;
   readonly private: boolean;

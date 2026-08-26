@@ -7,6 +7,7 @@ import {
   createDefaultCustomization,
   migrateLegacyCustomization,
   parseCustomizationImport,
+  recoverCustomization,
   resolveCustomization,
   serializeCustomization,
   setResolved,
@@ -53,23 +54,29 @@ export class CustomizationStore {
       persist(storage, migrated);
       return new CustomizationStore(storage, migrated, { recovered: false, message: "Preferências anteriores migradas para o Moon Settings V3." });
     }
+    let parsed: unknown;
     try {
-      const document = validateCustomization(JSON.parse(raw));
+      parsed = JSON.parse(raw);
+      const document = validateCustomization(parsed);
       if (!currentRaw && legacyRaw) persist(storage, document); else storage.setItem(CUSTOMIZATION_LAST_VALID_KEY, JSON.stringify(document));
       return new CustomizationStore(storage, document, { recovered: false, ...(!currentRaw && legacyRaw ? { message: "Personalização V2 migrada para V3 sem alterar o original." } : {}) });
     } catch (error) {
       const backup = storage.getItem(CUSTOMIZATION_LAST_VALID_KEY) ?? storage.getItem(CUSTOMIZATION_V2_LAST_VALID_KEY);
+      let fallback = createDefaultCustomization();
       if (backup) {
-        try {
-          const recovered = validateCustomization(JSON.parse(backup));
-          persist(storage, recovered);
-          return new CustomizationStore(storage, recovered, { recovered: true, message: "Configuração corrompida: o último estado válido foi restaurado." });
-        } catch { /* fall through to defaults */ }
+        try { fallback = validateCustomization(JSON.parse(backup)); } catch { /* use defaults */ }
       }
-      const defaults = createDefaultCustomization();
-      persist(storage, defaults);
+      if (parsed !== undefined) {
+        try {
+          const recovered = recoverCustomization(parsed, fallback);
+          persist(storage, recovered.document);
+          const detail = recovered.recoveredSections.join(", ") || "campos inválidos";
+          return new CustomizationStore(storage, recovered.document, { recovered: true, message: `Configuração recuperada parcialmente. Restaurado: ${detail}.` });
+        } catch { /* unsupported or structurally unreadable document */ }
+      }
+      persist(storage, fallback);
       const detail = error instanceof Error ? error.message : String(error);
-      return new CustomizationStore(storage, defaults, { recovered: true, message: `Configuração inválida (${detail}). Os padrões seguros foram restaurados.` });
+      return new CustomizationStore(storage, fallback, { recovered: true, message: backup ? `Configuração inválida (${detail}). O último estado válido foi restaurado.` : `Configuração inválida (${detail}). Os padrões seguros foram restaurados.` });
     }
   }
 
@@ -98,8 +105,19 @@ export class CustomizationStore {
   }
 
   setExperience(mode: SettingsMode, lastSection = this.#document.experience.lastSection): void {
+    if (this.#document.experience.mode === mode && this.#document.experience.lastSection === lastSection) return;
     const update = (document: CustomizationSchemaV2): CustomizationSchemaV2 => validateCustomization({ ...document, experience: { mode, lastSection }, updatedAt: Date.now() });
-    this.#document = update(this.#document); if (this.#previewSnapshot) this.#previewSnapshot = update(this.#previewSnapshot); this.#save(); this.#emit("update");
+    const nextDocument = update(this.#document);
+    const nextConfirmed = this.#previewSnapshot ? update(this.#previewSnapshot) : nextDocument;
+    try {
+      persist(this.storage, nextConfirmed);
+      this.#document = nextDocument;
+      if (this.#previewSnapshot) this.#previewSnapshot = nextConfirmed;
+      this.#lastError = undefined;
+      this.#emit("update");
+    } catch (error) {
+      this.#lastError = error instanceof Error ? error.message : String(error);
+    }
   }
 
   update(mutator: (config: CustomizationConfig) => void): boolean {
@@ -124,10 +142,19 @@ export class CustomizationStore {
     if (!this.#previewSnapshot) this.#previewSnapshot = this.document;
   }
 
-  applyPreview(): void {
-    this.#previewSnapshot = undefined;
-    this.#undo.length = 0;
-    this.#redo.length = 0;
+  applyPreview(): boolean {
+    if (!this.#previewSnapshot) return true;
+    try {
+      persist(this.storage, this.#document);
+      this.#previewSnapshot = undefined;
+      this.#undo.length = 0;
+      this.#redo.length = 0;
+      this.#lastError = undefined;
+      return true;
+    } catch (error) {
+      this.#lastError = error instanceof Error ? error.message : String(error);
+      return false;
+    }
   }
 
   cancelPreview(): void {
@@ -136,18 +163,23 @@ export class CustomizationStore {
     this.#previewSnapshot = undefined;
     this.#undo.length = 0;
     this.#redo.length = 0;
-    this.#save();
     this.#emit("cancel");
   }
 
   undo(): boolean {
     const previous = this.#undo.pop(); if (!previous) return false;
-    this.#redo.push(this.document); this.#document = previous; this.#save(); this.#emit("undo"); return true;
+    const current = this.document;
+    try { if (!this.previewing) persist(this.storage, previous); }
+    catch (error) { this.#undo.push(previous); this.#lastError = error instanceof Error ? error.message : String(error); return false; }
+    this.#redo.push(current); this.#document = previous; this.#lastError = undefined; this.#emit("undo"); return true;
   }
 
   redo(): boolean {
     const next = this.#redo.pop(); if (!next) return false;
-    this.#undo.push(this.document); this.#document = next; this.#save(); this.#emit("redo"); return true;
+    const current = this.document;
+    try { if (!this.previewing) persist(this.storage, next); }
+    catch (error) { this.#redo.push(next); this.#lastError = error instanceof Error ? error.message : String(error); return false; }
+    this.#undo.push(current); this.#document = next; this.#lastError = undefined; this.#emit("redo"); return true;
   }
 
   resetSection(section: keyof CustomizationConfig): void {
@@ -163,6 +195,27 @@ export class CustomizationStore {
       return;
     }
     this.#mutate(document => setResolved(document, this.#workspaceId, clone(createDefaultCustomization().global)), "reset");
+  }
+
+  startSafeMode(): boolean {
+    return this.update(config => {
+      const appearance = config.appearance as Mutable<typeof config.appearance>;
+      appearance.wallpaper = { ...clone(createDefaultCustomization().global.appearance.wallpaper), type: "color", source: config.appearance.colors.background };
+      appearance.glass = { enabled: false, intensity: 0 }; appearance.motion = { enabled: false, speed: 1 };
+      (config.layout.sidebar as Mutable<typeof config.layout.sidebar>).position = "left";
+      (config.layout.sidebar as Mutable<typeof config.layout.sidebar>).autoHide = false;
+      (config.workspaceDisplay as Mutable<typeof config.workspaceDisplay>).visibility = "always";
+    });
+  }
+
+  restoreLastKnownGood(): boolean {
+    const raw = this.storage.getItem(CUSTOMIZATION_LAST_VALID_KEY) ?? this.storage.getItem(CUSTOMIZATION_V2_LAST_VALID_KEY); if (!raw) return false;
+    try { this.#replace(validateCustomization(JSON.parse(raw)), "reset"); return true; }
+    catch (error) { this.#lastError = error instanceof Error ? error.message : String(error); return false; }
+  }
+
+  diagnostic(): string {
+    return JSON.stringify({ format: "moon-settings-diagnostic", version: 1, generatedAt: new Date().toISOString(), schemaVersion: this.#document.version, revision: this.#document.revision, scope: this.#document.scope, workspaceOverrides: Object.keys(this.#document.workspaces).length, savedThemes: this.#document.themes.length, recoveredOnLoad: this.loadResult.recovered, recoveryMessage: this.loadResult.message, previewing: this.previewing, lastError: this.#lastError }, null, 2);
   }
 
   saveTheme(name: string): SavedCustomizationTheme {
@@ -249,15 +302,16 @@ export class CustomizationStore {
     try {
       mutator(candidate);
       const validated = validateCustomization({ ...candidate, revision: candidate.revision + 1, updatedAt: Date.now() });
-      this.#undo.push(previous); if (this.#undo.length > 80) this.#undo.shift(); this.#redo.length = 0; this.#document = validated; this.#lastError = undefined; this.#save(); this.#emit(reason); return true;
+      if (!this.previewing) persist(this.storage, validated);
+      this.#undo.push(previous); if (this.#undo.length > 80) this.#undo.shift(); this.#redo.length = 0; this.#document = validated; this.#lastError = undefined; this.#emit(reason); return true;
     } catch (error) { this.#lastError = error instanceof Error ? error.message : String(error); return false; }
   }
 
   #replace(next: CustomizationSchemaV2, reason: CustomizationChange["reason"]): void {
-    this.#undo.push(this.document); this.#redo.length = 0; this.#document = validateCustomization(next); this.#lastError = undefined; this.#save(); this.#emit(reason);
+    const validated = validateCustomization(next);
+    if (!this.previewing) persist(this.storage, validated);
+    this.#undo.push(this.document); this.#redo.length = 0; this.#document = validated; this.#lastError = undefined; this.#emit(reason);
   }
-
-  #save(): void { persist(this.storage, this.#document); }
   #emit(reason: CustomizationChange["reason"]): void { const change: CustomizationChange = { document: this.document, config: this.config, workspaceId: this.#workspaceId, reason }; this.#listeners.forEach(listener => listener(change)); }
 }
 

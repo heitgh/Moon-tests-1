@@ -81,9 +81,19 @@ export function registerProductIpc(
     const path = result.filePaths[0]; if (result.canceled || !path) return null;
     const content = await readFile(path, "utf8"); parseCustomizationImport(content, createDefaultCustomization()); return content;
   });
+  router.register("product:export-settings-diagnostic", async (_event, payload?: { readonly content?: string }) => {
+    if (!payload || typeof payload.content !== "string" || payload.content.length > 100_000) throw new TypeError("Invalid settings diagnostic");
+    const parsed = JSON.parse(payload.content) as { readonly format?: unknown }; if (parsed.format !== "moon-settings-diagnostic") throw new TypeError("Invalid settings diagnostic format");
+    const result = await dialog.showSaveDialog({ title: "Exportar diagnóstico das configurações", defaultPath: `moon-settings-diagnostic-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: "Moon Settings Diagnostic", extensions: ["json"] }] });
+    if (result.canceled || !result.filePath) return false; await writeFile(result.filePath, JSON.stringify(parsed, null, 2), { encoding: "utf8", mode: 0o600 }); return true;
+  });
   router.register("product:fetch-wallpaper", async (_event, payload?: { readonly url?: string }) => {
     if (!payload || typeof payload.url !== "string" || payload.url.length > 2_048) throw new TypeError("Invalid wallpaper URL");
     return fetchSafeWallpaper(payload.url);
+  });
+  router.register("product:fetch-favicon", async (_event, payload?: { readonly url?: string }) => {
+    if (!payload || typeof payload.url !== "string" || payload.url.length > 2_048) throw new TypeError("Invalid favicon URL");
+    return fetchSafeFavicon(payload.url);
   });
   router.register("product:migrate-legacy-profile", (_event, payload?: { readonly content?: string }) => {
     if (!payload || typeof payload.content !== "string" || payload.content.length > 5_000_000) {
@@ -107,11 +117,13 @@ export function registerProductIpc(
 
 const MAX_WALLPAPER_BYTES = 1_500_000;
 const WALLPAPER_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const MAX_FAVICON_BYTES = 250_000;
+const FAVICON_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "image/x-icon", "image/vnd.microsoft.icon"]);
 
 async function fetchSafeWallpaper(input: string): Promise<string> {
   let url = new URL(input);
   for (let redirect = 0; redirect <= 3; redirect += 1) {
-    await assertPublicHttpsUrl(url);
+    await assertPublicHttpsUrl(url, "Wallpaper");
     const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(12_000), headers: { accept: "image/png,image/jpeg,image/webp" } });
     if (response.status >= 300 && response.status < 400) { const location = response.headers.get("location"); if (!location || redirect === 3) throw new Error("Wallpaper has too many redirects"); url = new URL(location, url); continue; }
     if (!response.ok) throw new Error(`Wallpaper request failed (${response.status})`);
@@ -125,9 +137,26 @@ async function fetchSafeWallpaper(input: string): Promise<string> {
   throw new Error("Wallpaper could not be loaded");
 }
 
-async function assertPublicHttpsUrl(url: URL): Promise<void> {
-  if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")) throw new Error("Wallpaper URL must use public HTTPS on port 443");
-  const addresses = await lookup(url.hostname, { all: true, verbatim: true }); if (!addresses.length || addresses.some(({ address }) => !isPublicAddress(address))) throw new Error("Private or local wallpaper hosts are not allowed");
+async function fetchSafeFavicon(input: string): Promise<string> {
+  let url = new URL(input);
+  for (let redirect = 0; redirect <= 2; redirect += 1) {
+    await assertPublicHttpsUrl(url, "Favicon");
+    const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(8_000), headers: { accept: "image/png,image/jpeg,image/webp,image/gif,image/x-icon" } });
+    if (response.status >= 300 && response.status < 400) { const location = response.headers.get("location"); if (!location || redirect === 2) throw new Error("Favicon has too many redirects"); url = new URL(location, url); continue; }
+    if (!response.ok) throw new Error(`Favicon request failed (${response.status})`);
+    const mime = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase(); if (!mime || !FAVICON_TYPES.has(mime)) throw new Error("Favicon has an unsupported image type");
+    const declared = Number(response.headers.get("content-length") ?? "0"); if (declared > MAX_FAVICON_BYTES) throw new Error("Favicon exceeds 250 KB");
+    if (!response.body) throw new Error("Favicon response has no body");
+    const chunks: Uint8Array[] = []; let total = 0; const reader = response.body.getReader();
+    while (true) { const { done, value } = await reader.read(); if (done) break; if (!value) continue; total += value.byteLength; if (total > MAX_FAVICON_BYTES) { await reader.cancel(); throw new Error("Favicon exceeds 250 KB"); } chunks.push(value); }
+    return `data:${mime};base64,${Buffer.concat(chunks.map(chunk => Buffer.from(chunk))).toString("base64")}`;
+  }
+  throw new Error("Favicon could not be loaded");
+}
+
+async function assertPublicHttpsUrl(url: URL, resource: "Wallpaper" | "Favicon"): Promise<void> {
+  if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")) throw new Error(`${resource} URL must use public HTTPS on port 443`);
+  const addresses = await lookup(url.hostname, { all: true, verbatim: true }); if (!addresses.length || addresses.some(({ address }) => !isPublicAddress(address))) throw new Error(`Private or local ${resource.toLowerCase()} hosts are not allowed`);
 }
 
 function isPublicAddress(address: string): boolean {

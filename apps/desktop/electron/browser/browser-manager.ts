@@ -13,7 +13,7 @@ import type { ElectronAdblockService } from "../services/adblock-service.js";
 import type { ElectronDownloadManager } from "../services/download-manager.js";
 import type { Session } from "electron";
 import { openElectronContextMenu } from "./context-menu.js";
-import { isMoonSettingsUrl, normalizeMoonInternalUrl } from "../../../../packages/navigation/internal-routes.js";
+import { isMoonSettingsUrl, MoonInternalHistory, normalizeMoonInternalUrl } from "../../../../packages/navigation/internal-routes.js";
 
 export interface BrowserNavigationState {
   readonly canGoBack: boolean;
@@ -37,7 +37,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   readonly #tabs = new Map<string, BrowserTab>();
   readonly #tabWindows = new Map<string, string>();
   readonly #homeTabs = new Set<string>();
-  readonly #internalHistory = new Map<string, { entries: string[]; index: number }>();
+  readonly #internalHistory = new Map<string, MoonInternalHistory>();
   readonly #activeTabs = new Map<string, string>();
   readonly #bounds = new Map<string, Electron.Rectangle>();
   readonly #contentVisible = new Map<string, boolean>();
@@ -110,7 +110,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     this.#surfaces.set(id, surface);
     this.#tabs.set(id, tab);
     this.#tabWindows.set(id, windowId);
-    if (isHome) { this.#homeTabs.add(id); this.#internalHistory.set(id, { entries: [internalUrl!], index: 0 }); }
+    if (isHome) { this.#homeTabs.add(id); this.#internalHistory.set(id, new MoonInternalHistory(internalUrl!)); }
     this.#attachWebContentsEvents(id, windowId, surface);
 
     const bounds = this.#bounds.get(windowId);
@@ -181,9 +181,9 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
 
   async showInternalPage(id: string, input: string, push = true): Promise<void> {
     const url = normalizeMoonInternalUrl(input); if (!url) throw new TypeError("Rota interna do Moon inválida.");
-    this.#homeTabs.add(id); this.#replaceTab(id, { url, title: this.#internalTitle(url), loading: false }); this.#requireSurface(id).setVisible(false);
-    const history = this.#internalHistory.get(id) ?? { entries: [], index: -1 };
-    if (push) { history.entries.splice(history.index + 1); history.entries.push(url); history.index = history.entries.length - 1; }
+    this.#homeTabs.add(id); this.#replaceTab(id, { url, title: this.#internalTitle(url), loading: false, faviconUrl: "" }); this.#requireSurface(id).setVisible(false);
+    const history = this.#internalHistory.get(id) ?? new MoonInternalHistory();
+    if (push) history.push(url);
     this.#internalHistory.set(id, history); this.#emitUpdate(id);
   }
 
@@ -191,7 +191,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     if (normalizeMoonInternalUrl(url)) return this.showInternalPage(id, url);
     this.#homeTabs.delete(id);
     this.#internalHistory.delete(id);
-    this.#replaceTab(id, { url, title: "Carregando…", loading: true });
+    this.#replaceTab(id, { url, title: "Carregando…", loading: true, faviconUrl: "" });
     if (
       this.#requireTab(id).active &&
       this.#contentVisible.get(this.#requireWindowId(id)) !== false
@@ -203,12 +203,12 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   }
 
   async goBack(id: string): Promise<void> {
-    const internal = this.#internalHistory.get(id); if (this.#homeTabs.has(id) && internal && internal.index > 0) { internal.index -= 1; await this.showInternalPage(id, internal.entries[internal.index]!, false); return; }
+    const internal = this.#internalHistory.get(id); const target = this.#homeTabs.has(id) ? internal?.back() : undefined; if (target) { await this.showInternalPage(id, target, false); return; }
     new NavigationController(this.#requireSurface(id).view.webContents).back();
   }
 
   async goForward(id: string): Promise<void> {
-    const internal = this.#internalHistory.get(id); if (this.#homeTabs.has(id) && internal && internal.index < internal.entries.length - 1) { internal.index += 1; await this.showInternalPage(id, internal.entries[internal.index]!, false); return; }
+    const internal = this.#internalHistory.get(id); const target = this.#homeTabs.has(id) ? internal?.forward() : undefined; if (target) { await this.showInternalPage(id, target, false); return; }
     new NavigationController(this.#requireSurface(id).view.webContents).forward();
   }
 
@@ -365,6 +365,10 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
       this.#replaceTab(id, { title: title.trim() || "Nova guia" });
       this.#emitUpdate(id);
     });
+    contents.on("page-favicon-updated", (_event, favicons) => {
+      const faviconUrl = favicons.find(url => /^https:\/\//i.test(url) || /^data:image\//i.test(url)); if (!faviconUrl) return;
+      this.#replaceTab(id, { faviconUrl }); this.#emitUpdate(id);
+    });
     contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl) => {
       if (errorCode === -3) return;
       this.#replaceTab(id, { loading: false, url: validatedUrl || this.#requireTab(id).url });
@@ -431,8 +435,8 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     const update: BrowserTabUpdate = {
       tab,
       navigation: {
-        canGoBack: isInternal ? Boolean(internal && internal.index > 0) : navigation.canGoBack(),
-        canGoForward: isInternal ? Boolean(internal && internal.index < internal.entries.length - 1) : navigation.canGoForward()
+        canGoBack: isInternal ? Boolean(internal?.canGoBack) : navigation.canGoBack(),
+        canGoForward: isInternal ? Boolean(internal?.canGoForward) : navigation.canGoForward()
       },
       ...(error ? { error } : {})
     };

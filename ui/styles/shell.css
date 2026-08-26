@@ -33,6 +33,7 @@
 .moon-tab.is-active::before { background: var(--moon-user-accent); border-radius: 99px; content: ""; height: 2px; left: 8px; position: absolute; right: 8px; top: -1px; }
 .moon-tab-favicon { align-items: center; color: #778092; display: flex; justify-content: center; }
 .moon-tab-favicon .moon-icon { height: 13px; width: 13px; }
+.moon-tab-favicon img { height: 14px; object-fit: contain; width: 14px; }
 .moon-tab-favicon.is-loading { animation: moon-spin 1.1s linear infinite; color: var(--moon-user-accent); }
 .moon-tab-title { flex: 1; font-size: var(--moon-font-ui); font-weight: 530; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .moon-tab-close { align-items: center; background: transparent; border: 0; border-radius: var(--moon-radius-xs); color: var(--moon-text-muted); display: flex; height: var(--moon-control-height); justify-content: center; opacity: .35; padding: 0; width: var(--moon-control-height); }

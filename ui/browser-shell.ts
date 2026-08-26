@@ -36,11 +36,17 @@ import { CustomizationStore } from "./customization/customization-store.js";
 import { CustomizationApplier } from "./customization/customization-applier.js";
 import { CustomizationCenter } from "./customization/customization-center.js";
 import type { CustomizationConfig } from "./customization/customization-schema.js";
+import type { SettingsSection } from "./customization/settings-catalog.js";
+import { isMoonSettingsUrl, normalizeMoonInternalUrl } from "../packages/navigation/internal-routes.js";
+import { FaviconCache } from "./browser-shell/favicon-cache.js";
 
 class BrowserShell {
   readonly #bridge = moonBrowserBridge();
   readonly #customization = CustomizationStore.load();
   readonly #customizationApplier = new CustomizationApplier();
+  readonly #faviconCache = new FaviconCache();
+  readonly #favicons = new Map<string, string>();
+  readonly #pendingFavicons = new Map<string, Promise<void>>();
   readonly #tabs = new Map<string, Tab>();
   readonly #navigation = new Map<string, Navigation>();
   readonly #tabStrip = new TabStrip({
@@ -65,6 +71,7 @@ class BrowserShell {
   readonly #homeView = new HomeView(value => { void this.#navigate(value); }, value => { void this.#createTab(value); });
   readonly #home = this.#homeView.element;
   readonly #viewport = el("div", "moon-browser-viewport");
+  readonly #stage = el("div", "moon-stage");
   readonly #drawer = el("aside", "moon-drawer");
   readonly #drawerBody = el("div", "moon-drawer-body");
   readonly #drawerTitle = el("h2", "moon-drawer-title", "Painel");
@@ -93,6 +100,9 @@ class BrowserShell {
   #openDrawer: Drawer | undefined;
   #settings: HTMLElement | undefined;
   #settingsCenter: CustomizationCenter | undefined;
+  #settingsReturnHome = true;
+  #settingsClosing = false;
+  #settingsOpening = false;
   #permissionPrompt: HTMLElement | undefined;
   #activePermission: PermissionRequest | undefined;
   readonly #permissionQueue: PermissionRequest[] = [];
@@ -147,19 +157,19 @@ class BrowserShell {
     const main = el("section", "moon-browser-main"); const tabsBar = el("header", "moon-tabs-bar"); const mark = el("div", "moon-window-mark"); mark.append(svg("moon"), el("span", "", "MOON"));
     const addTab = btn("moon-add-tab", "Nova aba (Ctrl+T)", "plus"); addTab.addEventListener("click", () => void this.#createTab()); tabsBar.append(mark, this.#tabStrip.element, addTab);
 
-    const content = el("div", "moon-content"); const stage = el("div", "moon-stage"); this.#renderHomeShortcuts(); stage.append(this.#home, this.#viewport, this.#status); content.append(stage);
+    const content = el("div", "moon-content"); this.#renderHomeShortcuts(); this.#stage.append(this.#home, this.#viewport, this.#status); content.append(this.#stage);
     main.append(tabsBar, this.#toolbar.element, this.#workspaceBar.element, content); shell.append(rail, this.#drawer, main); this.container.replaceChildren(shell);
     this.#renderAdblock();
   }
 
   async #createTab(url?: string): Promise<void> { if (!this.#bridge) return; try { const tab = await this.#bridge.createTab(url, this.#workspaceId); this.#tabs.set(tab.id, tab); this.#activeTabId = tab.id; this.#render(); } catch (error) { this.#showError(error); } }
-  async #activate(tabId: string): Promise<void> { if (!this.#bridge || !this.#tabs.has(tabId)) return; this.#activeTabId = tabId; for (const [id, tab] of this.#tabs) this.#tabs.set(id, { ...tab, active: id === tabId }); this.#render(); try { await this.#bridge.activateTab(tabId); } catch (error) { this.#showError(error); } }
+  async #activate(tabId: string): Promise<void> { if (!this.#bridge || !this.#tabs.has(tabId)) return; if (tabId !== this.#activeTabId && this.#settingsCenter?.presentation === "page") await this.#dismissSettings(false); this.#activeTabId = tabId; for (const [id, tab] of this.#tabs) this.#tabs.set(id, { ...tab, active: id === tabId }); this.#render(); try { await this.#bridge.activateTab(tabId); } catch (error) { this.#showError(error); } }
   async #close(tabId: string): Promise<void> { if (!this.#bridge) return; try { await this.#bridge.closeTab(tabId); } catch (error) { this.#showError(error); } }
-  async #handleClosed(tabId: string): Promise<void> { this.#tabs.delete(tabId); this.#navigation.delete(tabId); const tabs = this.#workspaceTabs(); const active = tabs.find(tab => tab.active) ?? tabs.at(-1); this.#activeTabId = active?.id; if (!active) await this.#createTab(); else await this.#activate(active.id); this.#renderDrawer(); }
-  async #showHome(): Promise<void> { this.#closeDrawer(); if (!this.#bridge) return; if (!this.#activeTabId) return this.#createTab(); try { await this.#bridge.showHome(this.#activeTabId); } catch (error) { this.#showError(error); } }
-  async #navigate(value: string): Promise<void> { if (!this.#bridge || !value.trim()) return; const url = this.#resolveInput(value); if (url === "moon://newtab") return this.#showHome(); this.#closeDrawer(); if (!this.#activeTabId) return this.#createTab(url); this.#status.textContent = ""; try { await this.#bridge.navigate(this.#activeTabId, url); } catch (error) { this.#showError(error); } }
+  async #handleClosed(tabId: string): Promise<void> { this.#tabs.delete(tabId); this.#navigation.delete(tabId); this.#favicons.delete(tabId); this.#pendingFavicons.delete(tabId); const tabs = this.#workspaceTabs(); const active = tabs.find(tab => tab.active) ?? tabs.at(-1); this.#activeTabId = active?.id; if (!active) await this.#createTab(); else await this.#activate(active.id); this.#renderDrawer(); }
+  async #showHome(): Promise<void> { this.#closeDrawer(); if (!this.#bridge) return; if (this.#settingsCenter?.presentation === "page") await this.#dismissSettings(false); if (!this.#activeTabId) return this.#createTab(); try { await this.#bridge.showHome(this.#activeTabId); } catch (error) { this.#showError(error); } }
+  async #navigate(value: string): Promise<void> { if (!this.#bridge || !value.trim()) return; const url = this.#resolveInput(value); if (url === "moon://newtab") return this.#showHome(); this.#closeDrawer(); if (this.#settingsCenter?.presentation === "page") await this.#dismissSettings(false); if (!this.#activeTabId) return this.#createTab(url); this.#status.textContent = ""; try { const internal = normalizeMoonInternalUrl(url); if (internal) await this.#bridge.showInternalPage(this.#activeTabId, internal); else await this.#bridge.navigate(this.#activeTabId, url); } catch (error) { this.#showError(error); } }
   #resolveInput(value: string): string {
-    const trimmed = value.trim(); const generic = resolveNavigationInput(trimmed); if (!generic.includes("duckduckgo.com/?q=")) return generic;
+    const trimmed = value.trim(); const internal = normalizeMoonInternalUrl(trimmed); if (internal) return internal; const generic = resolveNavigationInput(trimmed); if (!generic.includes("duckduckgo.com/?q=")) return generic;
     const search = this.#customization.config.search; const keywordMatch = /^(?<keyword>[a-z0-9-]+):\s*(?<query>.+)$/i.exec(trimmed);
     const provider = keywordMatch?.groups ? search.providers.find(item => item.keyword === keywordMatch.groups?.keyword) : search.providers.find(item => item.id === search.defaultEngine);
     const query = keywordMatch?.groups?.query ?? trimmed; const template = provider?.template ?? "https://duckduckgo.com/?q={query}";
@@ -172,11 +182,13 @@ class BrowserShell {
     const previous = this.#tabs.get(update.tab.id); this.#tabs.set(update.tab.id, update.tab); this.#navigation.set(update.tab.id, update.navigation);
     if (update.tab.active) { this.#activeTabId = update.tab.id; const workspaceId = update.tab.workspaceId ?? this.#workspaceId; if (workspaceId !== this.#workspaceId) { this.#workspaceId = workspaceId; this.#customization.setWorkspace(workspaceId); } }
     if (previous?.loading && !update.tab.loading && this.#isWeb(update.tab.url)) this.#recordHistory(update.tab);
-    if (update.error) this.#status.textContent = `Não foi possível abrir a página: ${update.error}`; this.#render(); this.#renderDrawer();
+    if (update.error) this.#status.textContent = `Não foi possível abrir a página: ${update.error}`; void this.#hydrateFavicon(update.tab); this.#render(); this.#renderDrawer();
   }
 
   #render(): void {
-    const active = this.#activeTabId ? this.#tabs.get(this.#activeTabId) : undefined; this.#renderTabs(); this.#renderWorkspaces(); const isHome = !active || active.url === "moon://newtab";
+    const active = this.#activeTabId ? this.#tabs.get(this.#activeTabId) : undefined; this.#renderTabs(); this.#renderWorkspaces(); const isHome = !active || active.url === "moon://newtab"; const isSettings = Boolean(active && isMoonSettingsUrl(active.url));
+    document.documentElement.dataset.moonPage = isHome ? "home" : isSettings ? "settings" : "web";
+    if (active && isSettings) void this.#ensureSettingsPage(active.url); else if (this.#settingsCenter?.presentation === "page" && !this.#settingsClosing) void this.#dismissSettings(false);
     this.#home.hidden = !isHome; this.#omnibox.value = isHome ? "" : active.url; const nav = active ? this.#navigation.get(active.id) : undefined; this.#back.disabled = !nav?.canGoBack; this.#forward.disabled = !nav?.canGoForward;
     this.#reload.replaceChildren(svg(active?.loading ? "stop" : "reload")); this.#reload.title = active?.loading ? "Parar" : "Recarregar";
     const saved = active ? this.#bookmarks.some(item => item.url === active.url) : false; this.#bookmark.classList.toggle("is-active", saved); this.#bookmark.title = saved ? "Remover dos favoritos" : "Adicionar aos favoritos";
@@ -184,7 +196,7 @@ class BrowserShell {
   }
 
   #renderTabs(): void {
-    this.#tabStrip.render(this.#workspaceTabs(), this.#activeTabId);
+    this.#tabStrip.render(this.#workspaceTabs(), this.#activeTabId, this.#favicons);
   }
 
   #renderWorkspaces(): void {
@@ -297,15 +309,23 @@ class BrowserShell {
   #bytes(value: number): string { if (value < 1024) return `${value} B`; if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`; if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`; return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`; }
   #empty(name: IconName, title: string, detail: string): void { const empty = el("div", "moon-empty"); empty.append(svg(name), el("strong", "", title), el("p", "", detail)); this.#drawerBody.append(empty); }
 
-  async #openSettings(): Promise<void> {
-    if (this.#settings) return;
+  async #openSettings(presentation: "modal" | "page" = "modal", initialSection?: SettingsSection): Promise<void> {
+    if (this.#settingsCenter) {
+      if (presentation === "page") { this.#settingsCenter.setPresentation("page"); this.#stage.append(this.#settingsCenter.element); }
+      return;
+    }
+    if (this.#settingsOpening) return;
+    this.#settingsOpening = true;
     this.#closeDrawer();
     if (this.#bridge) await this.#bridge.setContentVisible(false);
     const workspaceName = this.#workspaces.find(workspace => workspace.id === this.#workspaceId)?.name ?? "workspace atual";
     const center = new CustomizationCenter({
       store: this.#customization,
       workspaceName,
+      presentation,
+      initialSection,
       onExport: content => this.#bridge?.exportCustomization(content) ?? Promise.resolve(false),
+      onExportDiagnostic: content => this.#bridge?.exportSettingsDiagnostic(content) ?? Promise.resolve(false),
       onImport: () => this.#bridge?.importCustomization() ?? Promise.resolve(null),
       onFetchWallpaper: url => this.#bridge?.fetchWallpaper(url) ?? Promise.reject(new Error("Wallpapers HTTPS exigem o aplicativo desktop.")),
       onImportMoonTheme: () => this.#bridge?.importMoonTheme() ?? Promise.reject(new Error("Moon Themes exigem o aplicativo desktop.")),
@@ -320,20 +340,63 @@ class BrowserShell {
       shortcuts: () => this.#shortcuts,
       onAddShortcut: shortcut => { this.#shortcuts = [...this.#shortcuts, { ...shortcut, id: crypto.randomUUID() }]; save(KEYS.shortcuts, this.#shortcuts); this.#refreshHomeData(); },
       onRemoveShortcut: id => { this.#shortcuts = this.#shortcuts.filter(shortcut => shortcut.id !== id); save(KEYS.shortcuts, this.#shortcuts); this.#refreshHomeData(); },
+      onOpenPage: section => this.#showSettingsPage(section),
+      onNavigateSection: (section, mode) => { if (center.presentation === "page") return this.#navigateSettingsSection(section, mode); },
       onClose: async applied => {
+        const wasPage = center.presentation === "page"; const returnHome = this.#settingsReturnHome; this.#settingsClosing = true;
         center.element.remove();
         this.#settings = undefined;
         this.#settingsCenter = undefined;
         this.#rail.get("settings")?.classList.remove("is-active");
         this.#flash(applied ? "Personalização aplicada." : "Preview cancelado; estado anterior restaurado.");
+        if (this.#bridge && wasPage && returnHome && this.#activeTabId && isMoonSettingsUrl(this.#tabs.get(this.#activeTabId)?.url ?? "")) await this.#bridge.showHome(this.#activeTabId);
         if (this.#bridge && !this.#permissionPrompt) await this.#bridge.setContentVisible(true);
+        this.#settingsReturnHome = true; this.#settingsClosing = false;
         requestAnimationFrame(() => this.#syncBounds());
       }
     });
     this.#settingsCenter = center;
     this.#settings = center.element;
-    this.container.append(center.element);
+    (presentation === "page" ? this.#stage : this.container).append(center.element);
     this.#rail.get("settings")?.classList.add("is-active");
+    this.#settingsOpening = false;
+  }
+
+  async #showSettingsPage(section: SettingsSection): Promise<void> {
+    if (!this.#bridge || !this.#activeTabId) return;
+    this.#settingsCenter?.setPresentation("page"); if (this.#settingsCenter) this.#stage.append(this.#settingsCenter.element);
+    this.#settingsReturnHome = true;
+    await this.#bridge.showInternalPage(this.#activeTabId, this.#settingsUrl(section, this.#customization.document.experience.mode));
+  }
+
+  async #ensureSettingsPage(url: string): Promise<void> {
+    const state = this.#settingsState(url); this.#customization.setExperience(state.mode, state.section);
+    await this.#openSettings("page", state.section);
+  }
+
+  async #navigateSettingsSection(section: SettingsSection, mode: "essential" | "all" | "advanced"): Promise<void> {
+    if (!this.#bridge || !this.#activeTabId) return;
+    await this.#bridge.showInternalPage(this.#activeTabId, this.#settingsUrl(section, mode));
+  }
+
+  async #dismissSettings(returnHome: boolean): Promise<void> {
+    const center = this.#settingsCenter; if (!center || this.#settingsClosing) return;
+    this.#settingsReturnHome = returnHome; this.#settingsClosing = true;
+    await center.cancel(); if (this.#settingsCenter === center) this.#settingsClosing = false;
+  }
+
+  #settingsState(url: string): { readonly section: SettingsSection; readonly mode: "essential" | "all" | "advanced" } {
+    const route = normalizeMoonInternalUrl(url)?.split("/").at(-1);
+    if (route === "settings") return { section: "appearance", mode: "essential" };
+    if (route === "all") return { section: "appearance", mode: "all" };
+    const sections: Readonly<Record<string, SettingsSection>> = { appearance: "appearance", themes: "appearance", home: "home", sidebar: "layout", workspaces: "data", search: "search", privacy: "data", advanced: this.#customization.document.experience.lastSection as SettingsSection };
+    return { section: sections[route ?? ""] ?? "appearance", mode: "advanced" };
+  }
+
+  #settingsUrl(section: SettingsSection, mode: "essential" | "all" | "advanced"): string {
+    if (mode === "essential") return "moon://settings/settings"; if (mode === "all") return "moon://settings/all";
+    const route: Readonly<Record<SettingsSection, string>> = { appearance: "appearance", layout: "sidebar", home: "home", typography: "advanced", search: "search", data: "privacy" };
+    return `moon://settings/${route[section]}`;
   }
   #enqueuePermissionPrompt(request: PermissionRequest): void {
     this.#permissionQueue.push(request);
@@ -372,11 +435,24 @@ class BrowserShell {
   }
   #applyCustomization(config: CustomizationConfig): void {
     this.#customizationApplier.apply(config);
+    this.#faviconCache.configure(config.favicons);
+    if (!config.favicons.enabled) this.#favicons.clear(); else for (const tab of this.#tabs.values()) void this.#hydrateFavicon(tab);
     const provider = config.search.providers.find(item => item.id === config.search.defaultEngine); if (provider && this.#bridge?.setSearchTemplate) void this.#bridge.setSearchTemplate(provider.template);
     this.#toolbar.applyLayout(config.layout);
     this.#homeView.apply(config);
     this.#refreshHomeData();
     requestAnimationFrame(() => this.#syncBounds());
+  }
+  async #hydrateFavicon(tab: Tab): Promise<void> {
+    const source = tab.faviconUrl; const settings = this.#customization.config.favicons;
+    if (!settings.enabled || !source) { this.#favicons.delete(tab.id); return; }
+    const cached = this.#faviconCache.get(source); if (cached) { this.#favicons.set(tab.id, cached); this.#renderTabs(); return; }
+    if (!this.#bridge || this.#pendingFavicons.has(tab.id) || !/^https:\/\//i.test(source)) return;
+    const request = this.#bridge.fetchFavicon(source).then(data => {
+      if (this.#tabs.get(tab.id)?.faviconUrl !== source || !this.#faviconCache.set(source, data)) return;
+      this.#favicons.set(tab.id, data); this.#renderTabs();
+    }).catch(() => undefined).finally(() => this.#pendingFavicons.delete(tab.id));
+    this.#pendingFavicons.set(tab.id, request); await request;
   }
   #refreshHomeData(): void {
     this.#homeView.updateData({ shortcuts: this.#shortcuts, bookmarks: this.#bookmarks, tabs: [...this.#tabs.values()], workspaces: this.#workspaces, downloads: this.#downloads, notes: this.#notes });
@@ -395,7 +471,20 @@ class BrowserShell {
   #startClock(): void { this.#homeView.startClock(); }
   #observe(): void { this.#resizeObserver = new ResizeObserver(() => this.#syncBounds()); this.#resizeObserver.observe(this.#viewport); window.addEventListener("resize", () => this.#syncBounds()); }
   #syncBounds(): void { if (!this.#bridge) return; const rect = this.#viewport.getBoundingClientRect(); if (rect.width < 1 || rect.height < 1) return; void this.#bridge.setBounds({ x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }).catch(error => this.#showError(error)); }
-  #bindShortcuts(): void { window.addEventListener("keydown", event => { const mod = event.ctrlKey || event.metaKey; if (event.key === "Escape") { if (this.#settingsCenter) this.#settingsCenter.cancel(); else this.#closeDrawer(); } else if (mod && event.key.toLowerCase() === "l") { event.preventDefault(); this.#toolbar.focusOmnibox(); } else if (mod && event.key.toLowerCase() === "k") { event.preventDefault(); this.#homeView.focusSearch(); } else if (mod && event.key.toLowerCase() === "t") { event.preventDefault(); void this.#createTab(); } else if (mod && event.key.toLowerCase() === "w" && this.#activeTabId) { event.preventDefault(); void this.#close(this.#activeTabId); } else if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); void this.#command("back"); } else if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); void this.#command("forward"); } }); }
+  #bindShortcuts(): void {
+    window.addEventListener("keydown", event => {
+      const mod = event.ctrlKey || event.metaKey; const key = event.key.toLowerCase();
+      if (event.key === "Escape") { if (this.#settingsCenter) void this.#settingsCenter.cancel(); else this.#closeDrawer(); }
+      else if (mod && event.key === ",") { event.preventDefault(); void this.#openSettings(); }
+      else if (mod && event.shiftKey && key === "w") { event.preventDefault(); this.#toggleDrawer("workspaces"); }
+      else if (mod && key === "l") { event.preventDefault(); this.#toolbar.focusOmnibox(); }
+      else if (mod && key === "k") { event.preventDefault(); this.#homeView.focusSearch(); }
+      else if (mod && key === "t") { event.preventDefault(); void this.#createTab(); }
+      else if (mod && key === "w" && this.#activeTabId) { event.preventDefault(); void this.#close(this.#activeTabId); }
+      else if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); void this.#command("back"); }
+      else if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); void this.#command("forward"); }
+    });
+  }
   #isWeb(url: string): boolean { return url.startsWith("https://") || url.startsWith("http://"); }
   #hostname(url: string): string { try { return new URL(url).hostname; } catch { return url; } }
   #flash(message: string): void { this.#status.textContent = message; window.setTimeout(() => { if (this.#status.textContent === message) this.#status.textContent = ""; }, 2200); }

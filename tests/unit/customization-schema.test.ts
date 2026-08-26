@@ -22,6 +22,14 @@ class MemoryStorage implements Storage {
   setItem(key: string, value: string): void { this.#values.set(key, value); }
 }
 
+class FailingStorage extends MemoryStorage {
+  failWrites = false;
+  override setItem(key: string, value: string): void {
+    if (this.failWrites) throw new DOMException(`Falha ao gravar ${key}`, "QuotaExceededError");
+    super.setItem(key, value);
+  }
+}
+
 describe("CustomizationSchemaV3", () => {
   it("creates a complete, valid and versioned default", () => {
     const document = validateCustomization(createDefaultCustomization(123));
@@ -85,12 +93,47 @@ describe("CustomizationStore", () => {
     expect(store.loadResult.recovered).toBe(true); expect(store.document.updatedAt).toBe(42);
   });
 
+  it("recovers only an invalid section and preserves other recent preferences", () => {
+    const storage = new MemoryStorage(); const backup = createDefaultCustomization(42); const recent = structuredClone(backup);
+    (recent.global.appearance.colors as { accent: string }).accent = "not-a-color";
+    (recent.global.layout.sidebar as { width: number }).width = 104;
+    (recent.global.typography as { family: string }).family = "Georgia, serif";
+    storage.setItem(CUSTOMIZATION_STORAGE_KEY, JSON.stringify(recent)); storage.setItem(CUSTOMIZATION_LAST_VALID_KEY, JSON.stringify(backup));
+    const store = CustomizationStore.load(storage);
+    expect(store.loadResult.recovered).toBe(true); expect(store.loadResult.message).toContain("global.appearance");
+    expect(store.config.appearance.colors.accent).toBe(backup.global.appearance.colors.accent);
+    expect(store.config.layout.sidebar.width).toBe(104); expect(store.config.typography.family).toBe("Georgia, serif");
+  });
+
   it("applies live changes with undo, redo and preview cancellation", () => {
-    const storage = new MemoryStorage(); const store = CustomizationStore.load(storage); const original = store.config.appearance.colors.accent;
+    const storage = new MemoryStorage(); const store = CustomizationStore.load(storage); const original = store.config.appearance.colors.accent; const confirmed = storage.getItem(CUSTOMIZATION_STORAGE_KEY);
     store.beginPreview(); expect(store.set("appearance.colors.accent", "#38bdf8")).toBe(true); expect(store.config.appearance.colors.accent).toBe("#38bdf8");
+    expect(storage.getItem(CUSTOMIZATION_STORAGE_KEY)).toBe(confirmed);
     expect(store.undo()).toBe(true); expect(store.config.appearance.colors.accent).toBe(original);
     expect(store.redo()).toBe(true); expect(store.config.appearance.colors.accent).toBe("#38bdf8");
-    store.cancelPreview(); expect(store.config.appearance.colors.accent).toBe(original);
+    store.cancelPreview(); expect(store.config.appearance.colors.accent).toBe(original); expect(storage.getItem(CUSTOMIZATION_STORAGE_KEY)).toBe(confirmed);
+  });
+
+  it("persists a preview only after apply", () => {
+    const storage = new MemoryStorage(); const store = CustomizationStore.load(storage); store.beginPreview();
+    expect(store.set("appearance.colors.accent", "#38bdf8")).toBe(true);
+    expect(JSON.parse(storage.getItem(CUSTOMIZATION_STORAGE_KEY)!).global.appearance.colors.accent).not.toBe("#38bdf8");
+    expect(store.applyPreview()).toBe(true);
+    expect(JSON.parse(storage.getItem(CUSTOMIZATION_STORAGE_KEY)!).global.appearance.colors.accent).toBe("#38bdf8");
+  });
+
+  it("keeps the confirmed state and the preview open when saving fails", () => {
+    const storage = new FailingStorage(); const store = CustomizationStore.load(storage); const confirmed = storage.getItem(CUSTOMIZATION_STORAGE_KEY);
+    store.beginPreview(); expect(store.set("appearance.colors.accent", "#38bdf8")).toBe(true); storage.failWrites = true;
+    expect(store.applyPreview()).toBe(false); expect(store.previewing).toBe(true); expect(storage.getItem(CUSTOMIZATION_STORAGE_KEY)).toBe(confirmed);
+    expect(store.lastError).toMatch(/Falha ao gravar/);
+  });
+
+  it("offers a reversible safe mode and a diagnostic without browsing data", () => {
+    const storage = new MemoryStorage(); const store = CustomizationStore.load(storage); store.beginPreview();
+    expect(store.startSafeMode()).toBe(true); expect(store.config.appearance.wallpaper.type).toBe("color"); expect(store.config.appearance.motion.enabled).toBe(false); expect(store.config.layout.sidebar.position).toBe("left");
+    const diagnostic = store.diagnostic(); expect(diagnostic).toContain("moon-settings-diagnostic"); expect(diagnostic).not.toContain("http");
+    store.cancelPreview(); expect(store.config.appearance.wallpaper.type).toBe("local");
   });
 
   it("keeps workspace customization independent from global values", () => {

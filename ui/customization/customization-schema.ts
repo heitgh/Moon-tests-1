@@ -163,6 +163,46 @@ export function validateCustomization(value: unknown): CustomizationSchemaV3 {
   return { version: 3, revision: integer(root.revision, "revisão", 0, Number.MAX_SAFE_INTEGER), scope, global, workspaces, themes, experience, updatedAt: integer(root.updatedAt, "data de atualização", 0, Number.MAX_SAFE_INTEGER) };
 }
 
+export interface CustomizationRecoveryResult {
+  readonly document: CustomizationSchemaV3;
+  readonly recoveredSections: readonly string[];
+}
+
+export function recoverCustomization(value: unknown, fallback: CustomizationSchemaV3 = createDefaultCustomization()): CustomizationRecoveryResult {
+  const base = validateCustomization(fallback); const root = object(value, "personalização");
+  if (root.version !== 2 && root.version !== 3) throw new Error("Versão de personalização não suportada.");
+  const recoveredSections: string[] = [];
+  const recoverConfig = (candidate: unknown, safe: CustomizationConfig, name: string): CustomizationConfig => {
+    let source: Record<string, unknown>;
+    try { source = object(candidate, name); } catch { recoveredSections.push(name); return clone(safe); }
+    let result = clone(safe);
+    for (const section of ["appearance", "layout", "home", "typography", "search", "workspaceDisplay", "favicons"] as const) {
+      if (source[section] === undefined && root.version === 2 && (section === "workspaceDisplay" || section === "favicons")) continue;
+      try { result = config({ ...result, [section]: source[section] }, name); }
+      catch { recoveredSections.push(`${name}.${section}`); }
+    }
+    return result;
+  };
+  const global = recoverConfig(root.global, base.global, "global");
+  const workspaces: Record<string, CustomizationConfig> = clone(base.workspaces);
+  try {
+    const candidates = object(root.workspaces, "workspaces");
+    for (const [id, candidate] of Object.entries(candidates)) {
+      try { text(id, "workspace id", 100); workspaces[id] = recoverConfig(candidate, base.workspaces[id] ?? base.global, `workspace ${id}`); }
+      catch { recoveredSections.push(`workspace ${id}`); }
+    }
+  } catch { recoveredSections.push("workspaces"); }
+  let themes = base.themes;
+  try { themes = validateCustomization({ ...base, themes: root.themes }).themes; } catch { recoveredSections.push("themes"); }
+  const recoverTop = <K extends "revision" | "scope" | "updatedAt" | "experience">(key: K): CustomizationSchemaV3[K] => {
+    try { return validateCustomization({ ...base, [key]: root[key], global, workspaces, themes })[key]; }
+    catch { recoveredSections.push(key); return base[key]; }
+  };
+  const revision = recoverTop("revision"); const scope = recoverTop("scope"); const updatedAt = recoverTop("updatedAt");
+  const experience = root.version === 2 && root.experience === undefined ? base.experience : recoverTop("experience");
+  return { document: validateCustomization({ version: 3, revision, scope, global, workspaces, themes, experience, updatedAt }), recoveredSections: [...new Set(recoveredSections)] };
+}
+
 function config(value: unknown, name: string): CustomizationConfig {
   const item = object(value, name); const appearanceValue = object(item.appearance, `${name}.appearance`); const colorsValue = object(appearanceValue.colors, `${name}.colors`); const wallpaperValue = object(appearanceValue.wallpaper, `${name}.wallpaper`); const opacityValue = object(appearanceValue.opacity, `${name}.opacity`); const shapeValue = object(appearanceValue.shape, `${name}.shape`); const motionValue = object(appearanceValue.motion, `${name}.motion`); const glassValue = object(appearanceValue.glass, `${name}.glass`); const scheduleValue = object(appearanceValue.schedule, `${name}.schedule`);
   const layoutValue = object(item.layout, `${name}.layout`); const sidebarValue = object(layoutValue.sidebar, `${name}.sidebar`); const drawerValue = object(layoutValue.drawer, `${name}.drawer`); const toolbarValue = object(layoutValue.toolbar, `${name}.toolbar`); const omniboxValue = object(layoutValue.omnibox, `${name}.omnibox`); const statusValue = object(layoutValue.statusBar, `${name}.statusBar`);

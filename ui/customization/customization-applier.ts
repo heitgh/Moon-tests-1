@@ -30,6 +30,9 @@ export class CustomizationApplier {
     this.root.dataset.moonHomeVertical = home.verticalAlign;
     this.root.dataset.moonStatus = layout.statusBar.visible ? "visible" : "hidden";
     this.root.dataset.moonSidebarLabels = layout.sidebar.labels;
+    this.root.dataset.moonSidebarAutoHide = layout.sidebar.autoHide ? "on" : "off";
+    this.root.dataset.moonWorkspaces = config.workspaceDisplay.visibility;
+    this.root.dataset.moonWorkspaceSelector = config.workspaceDisplay.compactSelector ? "compact" : "full";
     this.root.style.colorScheme = resolvedMode;
     const variables: Readonly<Record<string, string>> = {
       "--moon-user-accent": colors.accent, "--moon-user-accent-soft": `${colors.accent}32`,
@@ -37,6 +40,7 @@ export class CustomizationApplier {
       "--moon-text": colors.text, "--moon-text-muted": colors.textMuted, "--moon-border": colors.border,
       "--moon-success": colors.success, "--moon-warning": colors.warning, "--moon-danger": colors.danger,
       "--moon-sidebar-width": `${layout.sidebar.width}px`, "--moon-sidebar-icon": `${layout.sidebar.iconSize}px`, "--moon-sidebar-gap": `${layout.sidebar.spacing}px`,
+      "--moon-sidebar-hide-delay": `${layout.sidebar.hideDelay}ms`,
       "--moon-drawer-width": `${layout.drawer.width}px`, "--moon-toolbar-height": `${layout.toolbar.height}px`, "--moon-ui-scale": String(layout.uiScale),
       "--moon-sidebar-opacity": String(appearance.opacity.sidebar), "--moon-toolbar-opacity": String(appearance.opacity.toolbar), "--moon-card-opacity": String(appearance.opacity.cards),
       "--moon-drawer-opacity": String(appearance.opacity.drawers), "--moon-menu-opacity": String(appearance.opacity.menus), "--moon-modal-opacity": String(appearance.opacity.modals),

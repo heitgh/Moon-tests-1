@@ -4,18 +4,21 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const tab = { id: "tab-1", url: "moon://newtab", title: "Nova guia", active: true, loading: false, workspaceId: "research", private: false };
 const createTab = vi.fn(async (_url?: string, workspaceId?: string) => ({ ...tab, id: `tab-${createTab.mock.calls.length + 1}`, workspaceId: workspaceId ?? "research" }));
 const navigate = vi.fn(async () => undefined);
+const showInternalPage = vi.fn(async () => undefined);
 const setContentVisible = vi.fn(async () => undefined);
 const downloadListeners: Array<(downloads: readonly unknown[]) => void> = [];
 const adblockListeners: Array<(status: unknown) => void> = [];
 const tabUpdateListeners: Array<(update: unknown) => void> = [];
 const permissionListeners: Array<(request: { readonly id: string; readonly origin: string; readonly permission: string }) => void> = [];
 const bridge = {
-  createTab, getTabs: vi.fn(async () => []), closeTab: vi.fn(async () => undefined), activateTab: vi.fn(async () => undefined), showHome: vi.fn(async () => undefined), navigate,
+  createTab, getTabs: vi.fn(async () => []), closeTab: vi.fn(async () => undefined), activateTab: vi.fn(async () => undefined), showHome: vi.fn(async () => undefined), showInternalPage, navigate,
   back: vi.fn(async () => undefined), forward: vi.fn(async () => undefined), reload: vi.fn(async () => undefined), stop: vi.fn(async () => undefined), setBounds: vi.fn(async () => undefined), setContentVisible, respondToPermission: vi.fn(async () => undefined),
   getDownloads: vi.fn(async () => []), pauseDownload: vi.fn(async () => undefined), resumeDownload: vi.fn(async () => undefined), cancelDownload: vi.fn(async () => undefined), openDownload: vi.fn(async () => undefined), showDownloadInFolder: vi.fn(async () => undefined), clearFinishedDownloads: vi.fn(async () => undefined),
   getAdblockStatus: vi.fn(async () => ({ phase: "active", enabled: true, blockedCount: 12 })), setAdblockEnabled: vi.fn(async (enabled: boolean) => ({ phase: enabled ? "active" : "disabled", enabled, blockedCount: 12 })),
   exportProductData: vi.fn(async (_content: string) => true), importProductData: vi.fn(async () => null),
   exportCustomization: vi.fn(async (_content: string) => true), importCustomization: vi.fn(async () => null), fetchWallpaper: vi.fn(async () => "data:image/png;base64,YQ=="),
+  exportSettingsDiagnostic: vi.fn(async (_content: string) => true),
+  fetchFavicon: vi.fn(async () => "data:image/png;base64,YQ=="),
   migrateLegacyProfile: vi.fn(async () => ({ migrated: true, version: 1 })), onTabUpdated: vi.fn((listener: (update: unknown) => void) => { tabUpdateListeners.push(listener); return () => undefined; }), onTabClosed: vi.fn(() => () => undefined),
   onDownloadsUpdated: vi.fn((listener: (downloads: readonly unknown[]) => void) => { downloadListeners.push(listener); return () => undefined; }),
   onAdblockStatus: vi.fn((listener: (status: unknown) => void) => { adblockListeners.push(listener); return () => undefined; }),
@@ -96,6 +99,12 @@ describe("Moon browser shell", () => {
     const saved = JSON.parse(localStorage.getItem("moon:bookmarks:v1") ?? "[]") as Array<{ url: string }>;
     expect(saved.some(item => item.url === "https://moon.test/")).toBe(true);
   });
+  it("loads a validated favicon through the native bridge and renders it in the tab", async () => {
+    bridge.fetchFavicon.mockClear();
+    tabUpdateListeners[0]?.({ tab: { ...tab, url: "https://moon.test/", title: "Moon Test", faviconUrl: "https://moon.test/favicon.png", active: true, loading: false }, navigation: { canGoBack: false, canGoForward: false } });
+    await flush(); expect(bridge.fetchFavicon).toHaveBeenCalledWith("https://moon.test/favicon.png");
+    expect((document.querySelector(".moon-tab-favicon img") as HTMLImageElement | null)?.src).toContain("data:image/png;base64");
+  });
   it("toggles the real adblock service from the protection panel", async () => {
     bridge.setAdblockEnabled.mockClear();
     (document.querySelector('[aria-label="Proteção e AdBlock"]') as HTMLButtonElement).click();
@@ -103,7 +112,7 @@ describe("Moon browser shell", () => {
     toggle.click(); await flush();
     expect(bridge.setAdblockEnabled).toHaveBeenCalledWith(false);
   });
-  it("exports validated V2 customization through the native bridge", async () => {
+  it("exports validated V3 customization through the native bridge", async () => {
     bridge.exportCustomization.mockClear();
     (document.querySelector('[aria-label="Configurações"]') as HTMLButtonElement).click(); await flush();
     (document.querySelector('[aria-label="Workspaces e dados"]') as HTMLButtonElement).click();
@@ -113,13 +122,14 @@ describe("Moon browser shell", () => {
     (document.querySelector('[aria-label="Fechar e cancelar alterações"]') as HTMLButtonElement).click(); await flush();
   });
 
-  it("applies customization live, persists it, and cancels the preview", async () => {
+  it("applies customization live without persisting the draft and cancels the preview", async () => {
     const before = document.documentElement.dataset.moonTheme;
     (document.querySelector('[aria-label="Configurações"]') as HTMLButtonElement).click(); await flush();
-    const mode = [...document.querySelectorAll(".moon-field")].find(field => field.firstElementChild?.textContent === "Modo")?.querySelector("select") as HTMLSelectElement;
-    mode.value = before === "light" ? "dark" : "light"; mode.dispatchEvent(new Event("change", { bubbles: true })); await flush();
+    (document.querySelector('[data-mode="essential"]') as HTMLButtonElement).click(); await flush();
+    const confirmed = localStorage.getItem("moon:customization:v3");
+    (document.querySelector(`[aria-label="${before === "light" ? "Escuro" : "Claro"}"]`) as HTMLButtonElement).click(); await flush();
     expect(document.documentElement.dataset.moonTheme).not.toBe(before);
-    expect(JSON.parse(localStorage.getItem("moon:customization:v3") ?? "{}").version).toBe(3);
+    expect(localStorage.getItem("moon:customization:v3")).toBe(confirmed);
     (document.querySelector('[aria-label="Cancelar mudanças"]') as HTMLButtonElement).click(); await flush();
     expect(document.documentElement.dataset.moonTheme).toBe(before);
   });
@@ -128,16 +138,43 @@ describe("Moon browser shell", () => {
     (document.querySelector('[aria-label="Configurações"]') as HTMLButtonElement).click(); await flush();
     const search = document.querySelector('[aria-label="Buscar nas configurações"]') as HTMLInputElement;
     search.value = "tipografia"; search.dispatchEvent(new Event("input", { bubbles: true })); await flush();
-    expect([...document.querySelectorAll<HTMLElement>(".moon-setting-group")].some(group => !group.hidden && group.textContent?.includes("Família e ritmo"))).toBe(true);
-    search.value = ""; search.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(document.querySelector(".moon-settings-result")?.textContent).toContain("Família e ritmo");
+    (document.querySelector(".moon-settings-result") as HTMLButtonElement).click(); await flush();
+    expect(document.querySelector(".moon-customization-content")?.textContent).toContain("Família e ritmo");
     (document.querySelector('[aria-label="Layout e densidade"]') as HTMLButtonElement).click(); await flush();
     const first = document.querySelector(".moon-order-row") as HTMLElement;
-    const initial = JSON.parse(localStorage.getItem("moon:customization:v3") ?? "{}").global.layout.toolbar.items.map((item: { id: string }) => item.id);
+    const confirmed = localStorage.getItem("moon:customization:v3"); const firstLabel = first.querySelector("strong")?.textContent; const secondLabel = document.querySelectorAll(".moon-order-row")[1]?.querySelector("strong")?.textContent;
     first.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", altKey: true, bubbles: true })); await flush();
-    const reordered = JSON.parse(localStorage.getItem("moon:customization:v3") ?? "{}").global.layout.toolbar.items.map((item: { id: string }) => item.id);
-    expect(reordered[0]).toBe(initial[1]); expect(reordered[1]).toBe(initial[0]);
+    expect(document.querySelectorAll(".moon-order-row")[0]?.querySelector("strong")?.textContent).toBe(secondLabel); expect(document.querySelectorAll(".moon-order-row")[1]?.querySelector("strong")?.textContent).toBe(firstLabel);
+    expect(localStorage.getItem("moon:customization:v3")).toBe(confirmed);
     expect(document.querySelector(".moon-visually-hidden")?.textContent).toContain("posição");
     (document.querySelector('[aria-label="Cancelar mudanças"]') as HTMLButtonElement).click(); await flush();
+  });
+  it("opens settings as an internal full page and restores Home on close", async () => {
+    showInternalPage.mockClear(); bridge.showHome.mockClear();
+    (document.querySelector('[aria-label="Configurações"]') as HTMLButtonElement).click(); await flush();
+    (document.querySelector('[aria-label="Abrir configurações em página completa"]') as HTMLButtonElement).click(); await flush();
+    expect(showInternalPage).toHaveBeenCalledWith(expect.any(String), expect.stringMatching(/^moon:\/\/settings\//));
+    expect(document.querySelector('[data-testid="customization-center"]')?.getAttribute("data-presentation")).toBe("page");
+    tabUpdateListeners[0]?.({ tab: { ...tab, url: "moon://settings/appearance", title: "Configurações", active: true }, navigation: { canGoBack: true, canGoForward: false } }); await flush();
+    (document.querySelector('[aria-label="Voltar à página inicial"]') as HTMLButtonElement).click(); await flush();
+    expect(bridge.showHome).toHaveBeenCalled();
+    tabUpdateListeners[0]?.({ tab: { ...tab, url: "moon://newtab", title: "Nova guia", active: true }, navigation: { canGoBack: true, canGoForward: false } }); await flush();
+    expect(document.querySelector('[data-testid="customization-center"]')).toBeNull();
+  });
+  it("applies workspace visibility live and keeps keyboard recovery available", async () => {
+    (document.querySelector('[aria-label="Configurações"]') as HTMLButtonElement).click(); await flush();
+    (document.querySelector('[data-mode="essential"]') as HTMLButtonElement).click(); await flush();
+    const workspaceGroup = [...document.querySelectorAll<HTMLElement>(".moon-setting-group")].find(group => group.querySelector("h3")?.textContent === "Workspaces")!;
+    const visibility = workspaceGroup.querySelector("select") as HTMLSelectElement; visibility.value = "hidden"; visibility.dispatchEvent(new Event("change", { bubbles: true })); await flush();
+    expect(document.documentElement.dataset.moonWorkspaces).toBe("hidden");
+    (document.querySelector('[aria-label="Cancelar mudanças"]') as HTMLButtonElement).click(); await flush();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", ctrlKey: true, shiftKey: true })); await flush();
+    expect(document.querySelector(".moon-drawer.is-open .moon-drawer-title")?.textContent).toBe("Workspaces");
+    (document.querySelector('[aria-label="Fechar painel"]') as HTMLButtonElement).click(); await flush();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: ",", ctrlKey: true })); await flush();
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    (document.querySelector('[aria-label="Fechar e cancelar alterações"]') as HTMLButtonElement).click(); await flush();
   });
   it("queues site permissions and sends an explicit user decision", async () => {
     bridge.respondToPermission.mockClear(); setContentVisible.mockClear();
