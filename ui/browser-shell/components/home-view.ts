@@ -14,6 +14,7 @@ export interface HomeRuntimeData {
   readonly workspaces: readonly Workspace[];
   readonly downloads: readonly ManagedDownload[];
   readonly notes: string;
+  readonly favicons: Readonly<Record<string, string>>;
 }
 
 export class HomeView {
@@ -21,7 +22,7 @@ export class HomeView {
   readonly #wallpaper = element("div", "moon-home-wallpaper");
   readonly #grid = element("div", "moon-home-grid");
   #config: CustomizationConfig | undefined;
-  #data: HomeRuntimeData = { shortcuts: [], bookmarks: [], tabs: [], workspaces: [], downloads: [], notes: "" };
+  #data: HomeRuntimeData = { shortcuts: [], bookmarks: [], tabs: [], workspaces: [], downloads: [], notes: "", favicons: {} };
   #clockTimer: number | undefined;
   #focusTimer: number | undefined;
   #focusEndsAt = 0;
@@ -72,13 +73,13 @@ export class HomeView {
 
   #shortcuts(): HTMLElement {
     const card = this.#card("moon-shortcuts-card", "Atalhos"); const grid = element("div", "moon-home-shortcuts");
-    for (const item of [...DEFAULT_SHORTCUTS, ...this.#data.shortcuts]) { const shortcut = button("moon-shortcut-button", item.name); shortcut.append(element("span", "moon-shortcut-mark", item.name.slice(0, 2).toUpperCase()), element("span", "moon-shortcut-label", item.name)); shortcut.addEventListener("click", () => item.openIn === "new" ? this.onOpenNew(item.url) : this.onNavigate(item.url)); grid.append(shortcut); }
+    for (const item of [...DEFAULT_SHORTCUTS, ...this.#data.shortcuts]) { const shortcut = button("moon-shortcut-button", item.name); shortcut.append(this.#siteMark(item.url, item.name.slice(0, 2).toUpperCase(), "moon-shortcut-mark"), element("span", "moon-shortcut-label", item.name)); shortcut.addEventListener("click", () => item.openIn === "new" ? this.onOpenNew(item.url) : this.onNavigate(item.url)); grid.append(shortcut); }
     card.append(grid); return card;
   }
 
   #links(title: string, links: readonly SavedLink[], empty: string): HTMLElement {
     const card = this.#card("", title); if (!links.length) { card.append(element("p", "moon-widget-empty", empty)); return card; }
-    const list = element("div", "moon-home-link-list"); links.forEach(link => { const item = button("moon-home-link", `Abrir ${link.title || link.url}`, "globe"); const copy = element("span", "moon-list-copy"); copy.append(element("strong", "", link.title || hostname(link.url)), element("small", "", hostname(link.url))); item.append(copy); item.addEventListener("click", () => this.onNavigate(link.url)); list.append(item); }); card.append(list); return card;
+    const list = element("div", "moon-home-link-list"); links.forEach(link => { const item = button("moon-home-link", `Abrir ${link.title || link.url}`); const copy = element("span", "moon-list-copy"); copy.append(element("strong", "", link.title || hostname(link.url)), element("small", "", hostname(link.url))); item.append(this.#siteMark(link.url, hostname(link.url).slice(0, 1).toUpperCase()), copy); item.addEventListener("click", () => this.onNavigate(link.url)); list.append(item); }); card.append(list); return card;
   }
 
   #sessions(): HTMLElement {
@@ -97,10 +98,17 @@ export class HomeView {
 
   #performance(): HTMLElement { const card = this.#card("", "Performance"); const list = element("div", "moon-widget-metrics"); const values = [["Abas", String(this.#data.tabs.length)], ["Núcleos lógicos", String(navigator.hardwareConcurrency || "—")], ["Downloads ativos", String(this.#data.downloads.filter(item => item.state === "in-progress").length)]]; values.forEach(([label, value]) => { const row = element("div", "moon-widget-metric"); row.append(element("span", "", label), element("strong", "", value)); list.append(row); }); card.append(list); return card; }
 
+  #siteMark(url: string, fallback: string, className = "moon-site-mark"): HTMLElement {
+    const mark = element("span", className); const source = this.#data.favicons[origin(url)];
+    if (source) { const image = document.createElement("img"); image.src = source; image.alt = ""; image.draggable = false; mark.append(image); } else mark.textContent = fallback;
+    return mark;
+  }
+
   #card(className: string, title: string): HTMLElement { const card = element("section", `moon-home-card ${className}`.trim()); if (title) card.append(element("h2", "moon-widget-title", title)); return card; }
   #updateTimes(): void { const now = new Date(); this.#grid.querySelectorAll<HTMLTimeElement>('[data-widget="clock"]').forEach(node => { node.dateTime = now.toISOString(); node.textContent = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(now); }); this.#grid.querySelectorAll<HTMLTimeElement>('[data-widget="date"]').forEach(node => { node.dateTime = now.toISOString().slice(0, 10); node.textContent = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" }).format(now); }); }
   #applyWallpaper(settings: WallpaperSettings): void { const imageSource = settings.type === "https" ? settings.cachedData : settings.source; this.#wallpaper.style.backgroundImage = settings.type === "color" ? "none" : settings.type === "gradient" ? settings.source : imageSource ? `url(${JSON.stringify(imageSource)})` : "none"; this.#wallpaper.style.backgroundColor = settings.type === "color" ? settings.source : ""; this.#wallpaper.style.backgroundSize = settings.fit; this.#wallpaper.style.backgroundPosition = settings.position; this.#wallpaper.style.backgroundRepeat = settings.repeat ? "repeat" : "no-repeat"; }
 }
 
 function hostname(url: string): string { try { return new URL(url).hostname; } catch { return url; } }
+function origin(url: string): string { try { return new URL(url).origin; } catch { return url; } }
 function remaining(endsAt: number): string { const seconds = Math.max(0, Math.ceil((endsAt - Date.now()) / 1_000)); return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`; }

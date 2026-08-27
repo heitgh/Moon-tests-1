@@ -91,4 +91,13 @@ Critério de aceite: Aplicar retorna falha, `previewing` continua verdadeiro, o 
 
 ## Não conformidades deliberadamente não mascaradas
 
-Este relatório não declara a página interna, a recuperação parcial, os favicons, wallpapers ou todos os estados visuais como concluídos. Esses itens permanecem abertos até terem implementação conectada à shell e evidência automatizada ou manual correspondente.
+Página interna, recuperação parcial, estados visuais principais e o pipeline de favicons das abas foram conectados e testados. Permanecem parciais, sem declaração indevida de conclusão: biblioteca persistente de wallpapers com favoritos/deduplicação; propagação de favicons para Home, histórico, favoritos e omnibox; perfis/histórico de commits e a central completa “O que foi alterado”.
+
+## Gate recuperado
+
+- TypeScript e ESLint: verdes.
+- Unitários: 52 testes.
+- Integração da shell: 17 testes.
+- Electron/SQLite/serviços: 6 testes.
+- E2E: modal, página interna, busca por intenção, teclado, restart, import/export, viewports, zoom e movimento reduzido cobertos.
+- Inspeção visual: screenshots do Electron real regeneradas após correções de legibilidade e altura do preview.

@@ -131,7 +131,7 @@ export class CustomizationCenter {
         void this.options.onNavigateSection?.(id, this.#mode);
       }); this.#sidebar.append(nav);
     }
-    if (this.options.presentation !== "page" && this.options.onOpenPage) { const openPage = button("moon-settings-open-page", "Abrir configurações em página completa", "chevron"); openPage.append(element("span", "", "Abrir em página completa")); openPage.addEventListener("click", () => void this.options.onOpenPage?.(this.#active)); this.#sidebar.append(openPage); }
+    if (this.options.presentation !== "page" && this.options.onOpenPage) { const openPage = button("moon-settings-open-page", "Abrir configurações em página completa", "chevron"); openPage.append(element("span", "", "Abrir em página completa")); openPage.addEventListener("click", () => { window.setTimeout(() => void this.options.onOpenPage?.(this.#active), 0); }); this.#sidebar.append(openPage); }
     this.#scope.append(option("global", "Aplicar globalmente"), option("workspace", `Somente ${this.options.workspaceName}`));
     this.#scope.setAttribute("aria-label", "Escopo das configurações");
     this.#scope.addEventListener("change", () => { this.options.store.setScope(this.#scope.value as "global" | "workspace"); this.#say(`Escopo: ${this.#scope.selectedOptions[0]?.textContent ?? ""}.`); this.#render(); });
@@ -177,7 +177,7 @@ export class CustomizationCenter {
   #searchResults(query: string): void {
     const results = searchSettings(query); const heading = element("header", "moon-settings-page-intro"); heading.append(element("h1", "", "Resultados"), element("p", "", results.length ? `${results.length} configurações encontradas por título, descrição ou intenção.` : `Nada encontrado para “${query}”.`)); this.#content.append(heading);
     const list = element("div", "moon-settings-results");
-    for (const result of results) { const item = button("moon-settings-result", `Abrir ${result.title}`); const copy = element("span", "moon-list-copy"); copy.append(element("small", "", `${result.category} · ${result.level === "essential" ? "Essencial" : "Avançado"}`), element("strong", "", result.title), element("p", "", result.description)); item.append(copy, icon("chevron")); item.addEventListener("click", () => { this.#active = result.section; this.#mode = result.level; this.options.store.setExperience(this.#mode, result.section); this.#search.value = ""; this.#render(); requestAnimationFrame(() => { const target = this.#content.querySelector<HTMLElement>(`#moon-settings-${result.section}`); target?.focus(); target?.parentElement?.classList.add("is-highlighted"); }); }); list.append(item); }
+    for (const result of results) { const item = button("moon-settings-result", `Abrir ${result.title}`); const copy = element("span", "moon-list-copy"); copy.append(element("small", "", `${result.category} · ${result.level === "essential" ? "Essencial" : "Avançado"}`), element("strong", "", result.title), element("p", "", result.description)); item.append(copy, icon("chevron")); item.addEventListener("click", () => { this.#active = result.section; this.#mode = "advanced"; this.options.store.setExperience(this.#mode, result.section); this.#search.value = ""; this.#render(); void this.options.onNavigateSection?.(result.section, this.#mode); requestAnimationFrame(() => { const target = this.#content.querySelector<HTMLElement>(`#moon-settings-${result.section}`); target?.focus(); target?.parentElement?.classList.add("is-highlighted"); }); }); list.append(item); }
     this.#content.append(list);
   }
 

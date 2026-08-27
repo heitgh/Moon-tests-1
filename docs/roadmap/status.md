@@ -22,15 +22,22 @@ Atualizado em 26 de agosto de 2026. Este documento descreve somente capacidades 
 | Flags e documentação verdadeiras | Concluído | IA, extensões e updater permanecem desativados |
 | Wallpapers locais e screenshots atuais | Concluído | assets locais, CSP sem imagens remotas automáticas e capturas do runtime |
 
-## Personalização V2 — Fase 1
+## Moon Settings V3 — recuperação e evolução
 
 | Entrega | Estado | Evidência |
 |---|---|---|
-| Fonte de verdade versionada | Concluído | `ui/customization/customization-schema.ts` e `customization-store.ts` |
-| Preview, aplicar, cancelar, undo/redo e reset granular | Concluído | Central ativa em `ui/customization/customization-center.ts` |
+| Fonte de verdade V3 e migração V2 idempotente | Concluído | `ui/customization/customization-schema.ts`, migration e store |
+| Draft, preview, aplicar, cancelar, undo/redo e falha de persistência | Concluído | Commit ocorre somente em Aplicar; cancelamento não regrava o draft |
+| Recuperação parcial, lastKnownGood, modo seguro e diagnóstico | Concluído | `docs/settings-recovery-audit.md` e testes de corrupção por seção |
+| Modal e página interna `moon://settings/*` | Concluído | Shell compartilhado, deep links e histórico voltar/avançar |
+| Essencial, Todas, Avançado e busca por intenção | Concluído | Mesmo store/componentes; catálogo testado por sinônimos |
 | Aparência, layout, Home, tipografia, pesquisa e escopo | Concluído | `customization-applier.ts`, Home e toolbar ativos |
-| Temas salvos, migração V1 e import/export V2 | Concluído | schema validado, bridge desktop e E2E de reinício/importação |
+| Temas salvos, Moon Themes e import/export V3 | Concluído | schema validado, bridge desktop, quarentena e rollback |
 | Wallpaper remoto opcional e seguro | Concluído | HTTPS restrito, destino público, tipo/tamanho validados e dados servidos pelo main; CSP continua restritiva |
+| Sidebar e workspaces discretas e recuperáveis | Concluído | runtime, preview, limites, auto-hide, Ctrl+, e Ctrl+Shift+W |
+| Favicons seguros em abas | Concluído | fonte `webContents`, fetch HTTPS público no main, MIME/250 KB, cache/TTL e fallback |
+| Favicons em Home, histórico, favoritos e omnibox | Parcial | pipeline existe; listas ainda usam fallback genérico/monograma |
+| Biblioteca persistente de wallpapers com metadados | Parcial | importação e presets funcionam; favoritos/ordenação/deduplicação ainda não existem |
 | Capturas do runtime V2 | Concluído | `assets/screenshots/page.png` a `page2.png` |
 
 ## Reconstrução ergonômica
@@ -46,10 +53,10 @@ Atualizado em 26 de agosto de 2026. Este documento descreve somente capacidades 
 ## Quality gates atuais
 
 - TypeScript estrito e ESLint.
-- 35 testes unitários.
-- 14 testes de integração do shell.
+- 52 testes unitários.
+- 17 testes de integração do shell.
 - 6 testes SQLite/serviços no runtime Electron.
-- 5 E2E Electron: smoke, restore de sessão, persistência V2, import/export e ergonomia em quatro viewports.
+- 5 E2E Electron: smoke/modal/página/busca/teclado, restore de sessão, persistência V3, import/export e ergonomia com viewport/zoom/movimento reduzido.
 - Build Linux AppImage e deb; a validação final desta recuperação deve ser repetida após cada alteração de empacotamento.
 
 ## Moon Themes e menu contextual

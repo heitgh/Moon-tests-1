@@ -46,6 +46,7 @@ class BrowserShell {
   readonly #customizationApplier = new CustomizationApplier();
   readonly #faviconCache = new FaviconCache();
   readonly #favicons = new Map<string, string>();
+  readonly #siteFavicons = new Map<string, string>();
   readonly #pendingFavicons = new Map<string, Promise<void>>();
   readonly #tabs = new Map<string, Tab>();
   readonly #navigation = new Map<string, Navigation>();
@@ -288,7 +289,7 @@ class BrowserShell {
     const compatibility = el("div", "moon-extension-status"); compatibility.append(el("strong", "", "Compatibilidade Chromium"), el("span", "", "Em desenvolvimento"));
     this.#drawerBody.append(title, card, compatibility);
   }
-  #linkRow(item: SavedLink, remove?: () => void, meta?: string): HTMLElement { const row = el("div", "moon-link-row"); const open = btn("moon-link-main", `Abrir ${item.title}`); const copy = el("span", "moon-list-copy"); copy.append(el("strong", "", item.title), el("small", "", meta ?? this.#hostname(item.url))); open.append(el("span", "moon-site-mark", item.title[0]?.toUpperCase()), copy); open.addEventListener("click", () => void this.#navigate(item.url)); row.append(open); if (remove) { const removeButton = btn("moon-icon-button", `Remover ${item.title}`, "close"); removeButton.addEventListener("click", remove); row.append(removeButton); } return row; }
+  #linkRow(item: SavedLink, remove?: () => void, meta?: string): HTMLElement { const row = el("div", "moon-link-row"); const open = btn("moon-link-main", `Abrir ${item.title}`); const copy = el("span", "moon-list-copy"); copy.append(el("strong", "", item.title), el("small", "", meta ?? this.#hostname(item.url))); const mark = el("span", "moon-site-mark", item.title[0]?.toUpperCase()); const favicon = this.#faviconForUrl(item.url); if (favicon) { const image = document.createElement("img"); image.src = favicon; image.alt = ""; image.draggable = false; mark.replaceChildren(image); } open.append(mark, copy); open.addEventListener("click", () => void this.#navigate(item.url)); row.append(open); if (remove) { const removeButton = btn("moon-icon-button", `Remover ${item.title}`, "close"); removeButton.addEventListener("click", remove); row.append(removeButton); } return row; }
   #aiDrawer(): void {
     const hero = el("div", "moon-ai-hero"); hero.append(svg("sparkles"), el("strong", "", "Moon AI"), el("span", "moon-preview-badge", "PREVIEW"));
     const form = el("form", "moon-ai-form"); const input = el("textarea", "moon-ai-input"); input.placeholder = "O que você quer descobrir?"; input.rows = 5; const search = btn("moon-primary-button", "Pesquisar pergunta", "search"); search.append(el("span", "", "Pesquisar na web")); form.append(input, search); form.addEventListener("submit", event => { event.preventDefault(); void this.#navigate(input.value); });
@@ -436,7 +437,7 @@ class BrowserShell {
   #applyCustomization(config: CustomizationConfig): void {
     this.#customizationApplier.apply(config);
     this.#faviconCache.configure(config.favicons);
-    if (!config.favicons.enabled) this.#favicons.clear(); else for (const tab of this.#tabs.values()) void this.#hydrateFavicon(tab);
+    if (!config.favicons.enabled) { this.#favicons.clear(); this.#siteFavicons.clear(); } else for (const tab of this.#tabs.values()) void this.#hydrateFavicon(tab);
     const provider = config.search.providers.find(item => item.id === config.search.defaultEngine); if (provider && this.#bridge?.setSearchTemplate) void this.#bridge.setSearchTemplate(provider.template);
     this.#toolbar.applyLayout(config.layout);
     this.#homeView.apply(config);
@@ -446,16 +447,19 @@ class BrowserShell {
   async #hydrateFavicon(tab: Tab): Promise<void> {
     const source = tab.faviconUrl; const settings = this.#customization.config.favicons;
     if (!settings.enabled || !source) { this.#favicons.delete(tab.id); return; }
-    const cached = this.#faviconCache.get(source); if (cached) { this.#favicons.set(tab.id, cached); this.#renderTabs(); return; }
+    const cached = this.#faviconCache.get(source); if (cached) { this.#rememberFavicon(tab, cached); return; }
     if (!this.#bridge || this.#pendingFavicons.has(tab.id) || !/^https:\/\//i.test(source)) return;
     const request = this.#bridge.fetchFavicon(source).then(data => {
-      if (this.#tabs.get(tab.id)?.faviconUrl !== source || !this.#faviconCache.set(source, data)) return;
-      this.#favicons.set(tab.id, data); this.#renderTabs();
+      if (this.#tabs.get(tab.id)?.faviconUrl !== source) return;
+      if (tab.private) { const safe = this.#faviconCache.get(data); if (safe) this.#rememberFavicon(tab, safe); return; }
+      if (!this.#faviconCache.set(source, data)) return; this.#rememberFavicon(tab, data);
     }).catch(() => undefined).finally(() => this.#pendingFavicons.delete(tab.id));
     this.#pendingFavicons.set(tab.id, request); await request;
   }
+  #rememberFavicon(tab: Tab, data: string): void { this.#favicons.set(tab.id, data); if (!tab.private) { try { this.#siteFavicons.set(new URL(tab.url).origin, data); } catch { /* internal tab */ } } this.#renderTabs(); this.#refreshHomeData(); this.#renderDrawer(); }
+  #faviconForUrl(url: string): string | undefined { try { return this.#siteFavicons.get(new URL(url).origin); } catch { return undefined; } }
   #refreshHomeData(): void {
-    this.#homeView.updateData({ shortcuts: this.#shortcuts, bookmarks: this.#bookmarks, tabs: [...this.#tabs.values()], workspaces: this.#workspaces, downloads: this.#downloads, notes: this.#notes });
+    this.#homeView.updateData({ shortcuts: this.#shortcuts, bookmarks: this.#bookmarks, tabs: [...this.#tabs.values()], workspaces: this.#workspaces, downloads: this.#downloads, notes: this.#notes, favicons: Object.fromEntries(this.#siteFavicons) });
   }
   #bindDrawerResize(handle: HTMLElement): void {
     handle.addEventListener("pointerdown", event => {

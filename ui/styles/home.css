@@ -19,6 +19,7 @@
 .moon-shortcut-button { align-items: center; background: transparent; border-radius: var(--moon-radius-md); display: flex; flex-direction: column; gap: var(--moon-space-2); min-height: 72px; min-width: 64px; padding: var(--moon-space-1); }
 .moon-shortcut-mark { align-items: center; background: #0b0e16d8; border: 1px solid #ffffff24; border-radius: var(--moon-radius-md); box-shadow: var(--moon-shadow-low); color: #fff; display: flex; font-size: var(--moon-font-micro); font-weight: 800; height: 48px; justify-content: center; transition: transform var(--moon-motion-fast) var(--moon-ease-standard), border-color var(--moon-motion-fast) var(--moon-ease-standard); width: 48px; }
 .moon-shortcut-button:hover .moon-shortcut-mark { border-color: var(--moon-user-accent); transform: translateY(-3px); }
+.moon-shortcut-mark img, .moon-site-mark img { height: 70%; object-fit: contain; width: 70%; }
 .moon-shortcut-label { color: #d2d6df; font-size: var(--moon-font-caption); text-shadow: 0 2px 7px #000; }
 .moon-status { background: #111722eb; border: 1px solid #ffffff18; border-radius: var(--moon-radius-sm); bottom: var(--moon-space-3); box-shadow: var(--moon-shadow-low); color: #dbe0e9; font-size: var(--moon-font-caption); left: 50%; max-width: min(620px, 80%); padding: var(--moon-space-2) var(--moon-space-3); position: absolute; transform: translateX(-50%); z-index: 10; }
 .moon-status:empty { display: none; }

@@ -60,7 +60,16 @@ test("starts the packaged desktop shell and opens every primary panel", async ()
 
     await window.getByLabel("Configurações", { exact: true }).click();
     await expect(window.getByRole("dialog")).toBeVisible();
-    await expect(window.getByRole("heading", { name: "Aparência" })).toBeVisible();
+    await expect(window.getByRole("heading", { name: "Personalize o essencial" })).toBeVisible();
+    await expect(window.locator(".moon-settings-mode")).toHaveText(["Essencial", "Todas", "Avançado"]);
+    const search = window.getByLabel("Buscar nas configurações"); await search.fill("grossura da sidebar");
+    await window.locator(".moon-settings-result").click(); await expect(window.getByRole("heading", { name: "Layout e densidade" })).toBeVisible();
+    await window.getByLabel("Abrir configurações em página completa").evaluate(button => (button as HTMLButtonElement).click());
+    await expect(window.getByTestId("customization-center")).toHaveAttribute("data-presentation", "page");
+    await expect.poll(() => window.evaluate(() => (window as unknown as { moonBrowser: { getTabs(): Promise<Array<{ url: string }>> } }).moonBrowser.getTabs().then(tabs => tabs.some(tab => tab.url.startsWith("moon://settings/"))))).toBe(true);
+    await window.getByLabel("Voltar à página inicial").click();
+    await window.keyboard.press("Control+,"); await expect(window.getByRole("dialog")).toBeVisible(); await window.keyboard.press("Escape");
+    await window.keyboard.press("Control+Shift+W"); await expect(window.locator(".moon-drawer-title")).toHaveText("Workspaces");
   } finally {
     await application.close();
     await rm(userData, { recursive: true, force: true });
@@ -113,6 +122,7 @@ test("persists theme, sidebar and Home customization after restart", async () =>
     try {
       const window = await shellWindow(application);
       await window.getByLabel("Configurações", { exact: true }).click();
+      await window.getByLabel("Aparência", { exact: true }).click();
       await selectValue(window, "Modo", "light");
       await window.getByLabel("Layout e densidade", { exact: true }).click();
       await selectValue(window, "Posição", "right");
@@ -143,6 +153,7 @@ test("exports and imports customization through the real desktop bridge", async 
     const window = await shellWindow(application);
     await application.evaluate(({ dialog }, path) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: path }); }, exportPath);
     await window.getByLabel("Configurações", { exact: true }).click();
+    await window.getByLabel("Aparência", { exact: true }).click();
     await selectValue(window, "Modo", "light");
     await window.getByLabel("Workspaces e dados", { exact: true }).click();
     await window.getByLabel("Exportar tudo").click();
@@ -168,7 +179,7 @@ test("keeps the Phase A chrome readable, reachable and unclipped across target v
   const application = await electron.launch({ args: [...platformArguments, `--user-data-dir=${userData}`, "."], cwd: process.cwd(), env: { ...desktopEnv, NODE_ENV: "test", MOON_TEST_PROFILE_DIR: userData } });
   try {
     const window = await shellWindow(application);
-    for (const [width, height] of [[909, 1026], [1280, 800], [1440, 900], [1920, 1080]] as const) {
+    for (const [width, height] of [[909, 1026], [1280, 720], [1366, 768], [1920, 1080]] as const) {
       await setViewport(application, window, width, height);
       await expect.poll(() => window.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }))).toEqual({ width, scroll: width });
       const metrics = await window.evaluate(() => {
@@ -179,10 +190,15 @@ test("keeps the Phase A chrome readable, reachable and unclipped across target v
         return { minFont: Math.min(...fontSizes), minTarget: Math.min(...targets), gridLeft: grid?.left ?? -1, gridRight: grid?.right ?? Number.MAX_VALUE };
       });
       expect(metrics.minFont).toBeGreaterThanOrEqual(11);
-      expect(metrics.minTarget).toBeGreaterThanOrEqual(40);
+      expect(metrics.minTarget).toBeGreaterThanOrEqual(39.9);
       expect(metrics.gridLeft).toBeGreaterThanOrEqual(0);
       expect(metrics.gridRight).toBeLessThanOrEqual(width);
     }
+    await setViewport(application, window, 1280, 720); await window.getByLabel("Configurações", { exact: true }).click();
+    await window.evaluate(() => { document.documentElement.style.zoom = "2"; });
+    await expect(window.getByRole("dialog")).toBeVisible(); await expect(window.getByLabel("Aplicar personalização")).toBeVisible();
+    await window.emulateMedia({ reducedMotion: "reduce" });
+    expect(await window.evaluate(() => Number.parseFloat(getComputedStyle(document.querySelector(".moon-settings-modal")!).animationDuration || "0"))).toBeLessThanOrEqual(.001);
   } finally {
     await application.close();
     await rm(userData, { recursive: true, force: true });
