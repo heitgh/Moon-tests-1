@@ -1,6 +1,6 @@
 # Moon Browser — auditoria de recuperação das configurações V3
 
-Data: 2026-08-26  
+Data: 2026-08-27
 Branch auditada: `main`  
 Baseline V3 auditada: `76d74c338932d6b0f91a66e42634f05cb3e04307`
 
@@ -91,7 +91,7 @@ Critério de aceite: Aplicar retorna falha, `previewing` continua verdadeiro, o 
 
 ## Não conformidades deliberadamente não mascaradas
 
-Página interna, recuperação parcial, estados visuais principais e o pipeline de favicons das abas foram conectados e testados. Permanecem parciais, sem declaração indevida de conclusão: biblioteca persistente de wallpapers com favoritos/deduplicação; propagação de favicons para Home, histórico, favoritos e omnibox; perfis/histórico de commits e a central completa “O que foi alterado”.
+Página interna, recuperação parcial, estados visuais principais e o pipeline de favicons das abas, Home, histórico e favoritos foram conectados e testados. A navegação privada não alimenta o cache compartilhado por origem. Permanecem parciais, sem declaração indevida de conclusão: biblioteca persistente de wallpapers com favoritos/deduplicação; favicons em sugestões da omnibox (a shell ainda não possui essa superfície); perfis/histórico de commits e a central completa “O que foi alterado”.
 
 ## Gate recuperado
 

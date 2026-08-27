@@ -104,6 +104,8 @@ describe("Moon browser shell", () => {
     tabUpdateListeners[0]?.({ tab: { ...tab, url: "https://moon.test/", title: "Moon Test", faviconUrl: "https://moon.test/favicon.png", active: true, loading: false }, navigation: { canGoBack: false, canGoForward: false } });
     await flush(); expect(bridge.fetchFavicon).toHaveBeenCalledWith("https://moon.test/favicon.png");
     expect((document.querySelector(".moon-tab-favicon img") as HTMLImageElement | null)?.src).toContain("data:image/png;base64");
+    (document.querySelector('[aria-label="Favoritos"]') as HTMLButtonElement).click(); await flush();
+    expect((document.querySelector(".moon-drawer .moon-site-mark img") as HTMLImageElement | null)?.src).toContain("data:image/png;base64");
   });
   it("toggles the real adblock service from the protection panel", async () => {
     bridge.setAdblockEnabled.mockClear();

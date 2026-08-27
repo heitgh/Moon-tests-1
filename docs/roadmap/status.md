@@ -1,6 +1,6 @@
 # Moon Browser — status de reconstrução
 
-Atualizado em 26 de agosto de 2026. Este documento descreve somente capacidades conectadas ao runtime ativo.
+Atualizado em 27 de agosto de 2026. Este documento descreve somente capacidades conectadas ao runtime ativo.
 
 ## Moon Foundation Recovery
 
@@ -36,7 +36,8 @@ Atualizado em 26 de agosto de 2026. Este documento descreve somente capacidades 
 | Wallpaper remoto opcional e seguro | Concluído | HTTPS restrito, destino público, tipo/tamanho validados e dados servidos pelo main; CSP continua restritiva |
 | Sidebar e workspaces discretas e recuperáveis | Concluído | runtime, preview, limites, auto-hide, Ctrl+, e Ctrl+Shift+W |
 | Favicons seguros em abas | Concluído | fonte `webContents`, fetch HTTPS público no main, MIME/250 KB, cache/TTL e fallback |
-| Favicons em Home, histórico, favoritos e omnibox | Parcial | pipeline existe; listas ainda usam fallback genérico/monograma |
+| Favicons em Home, histórico e favoritos | Concluído | cache por origem alimenta atalhos e listas; navegação privada não propaga nem persiste dados |
+| Favicons em sugestões da omnibox | Não aplicável ao shell atual | a omnibox ainda não possui uma lista própria de sugestões; nenhuma capacidade inexistente é simulada |
 | Biblioteca persistente de wallpapers com metadados | Parcial | importação e presets funcionam; favoritos/ordenação/deduplicação ainda não existem |
 | Capturas do runtime V2 | Concluído | `assets/screenshots/page.png` a `page2.png` |
 

@@ -437,7 +437,7 @@ class BrowserShell {
   #applyCustomization(config: CustomizationConfig): void {
     this.#customizationApplier.apply(config);
     this.#faviconCache.configure(config.favicons);
-    if (!config.favicons.enabled) { this.#favicons.clear(); this.#siteFavicons.clear(); } else for (const tab of this.#tabs.values()) void this.#hydrateFavicon(tab);
+    if (!config.favicons.enabled) { this.#favicons.clear(); this.#siteFavicons.clear(); this.#renderTabs(); } else for (const tab of this.#tabs.values()) void this.#hydrateFavicon(tab);
     const provider = config.search.providers.find(item => item.id === config.search.defaultEngine); if (provider && this.#bridge?.setSearchTemplate) void this.#bridge.setSearchTemplate(provider.template);
     this.#toolbar.applyLayout(config.layout);
     this.#homeView.apply(config);
