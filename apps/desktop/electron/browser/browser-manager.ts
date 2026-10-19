@@ -1,3 +1,4 @@
+import { installZoomShortcuts } from "../main/interface-zoom.js";
 import { randomUUID } from "node:crypto";
 import type {
   BrowserNavigationOptions,
@@ -322,6 +323,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     surface: ElectronBrowserSurface
   ): void {
     const contents = surface.view.webContents;
+    installZoomShortcuts(contents, this.windows.require(windowId).webContents);
 
     contents.setWindowOpenHandler(({ url }) => {
       const source = this.#requireTab(id);

@@ -1,0 +1,46 @@
+name: Windows download
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - 'ui/**'
+      - 'packages/**'
+      - 'package*.json'
+      - 'electron-builder.yml'
+      - '.github/workflows/windows-download.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: moon-windows-release
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:integration
+      - run: npm run compile
+      - run: npx electron-builder --win --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Moon-Browser-Windows
+          path: release/*.exe
+          if-no-files-found: error
+      - name: Publish test downloads
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "moon-test-$env:GITHUB_RUN_NUMBER"
+          $files = Get-ChildItem release/*.exe | ForEach-Object { $_.FullName }
+          gh release create $tag @files --target $env:GITHUB_SHA --prerelease --title "Moon Browser - teste $env:GITHUB_RUN_NUMBER" --notes "Zoom da interface recuperável: Ctrl +, Ctrl - e Ctrl 0. Cores independentes de guias, navegação e atalhos. Instalador por usuário e versão portátil. Build automatizado; validação manual no Windows ainda necessária."

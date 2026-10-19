@@ -110,3 +110,11 @@ Artefatos são gravados em `release/`. Bancos, perfil, secrets, traces, relatór
 - Não copiar implementação do protótipo histórico sem auditoria de proveniência e licença.
 
 Consulte [`docs/architecture/security.md`](docs/architecture/security.md) para os invariantes de segurança.
+
+## Correção de escala e cores (0.1.1)
+
+Use **Ctrl++ / Ctrl+=**, **Ctrl+-** e **Ctrl+0** para aumentar, diminuir e restaurar a interface. As cores das guias, da navegação e dos atalhos agora possuem controles independentes no modo Essencial e no editor avançado.
+
+[Downloads Windows de teste](https://github.com/heitgh/Moon-tests-1/releases) · [Andamento dos builds](https://github.com/heitgh/Moon-tests-1/actions/workflows/windows-download.yml) · [Validação e limitações](docs/interface-zoom-and-colors.md)
+
+O build Windows publica instalador por usuário e portátil após concluir os checks. Consulte o resultado do workflow antes de procurar o novo download.

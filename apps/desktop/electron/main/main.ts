@@ -1,3 +1,4 @@
+import { installZoomShortcuts } from "./interface-zoom.js";
 import { app } from "electron";
 import { join } from "node:path";
 import { ElectronBrowserManager } from "../browser/browser-manager.js";
@@ -33,6 +34,7 @@ async function createMainWindow(): Promise<void> {
     }
   });
   const window = windows.require(id);
+  installZoomShortcuts(window.webContents, window.webContents);
 
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => {

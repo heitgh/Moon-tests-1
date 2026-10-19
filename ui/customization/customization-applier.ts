@@ -35,6 +35,8 @@ export class CustomizationApplier {
     this.root.dataset.moonWorkspaceSelector = config.workspaceDisplay.compactSelector ? "compact" : "full";
     this.root.style.colorScheme = resolvedMode;
     const variables: Readonly<Record<string, string>> = {
+      "--moon-tab-bar": colors.tabBar, "--moon-active-tab": colors.activeTab, "--moon-toolbar-background": colors.toolbar,
+      "--moon-shortcut-background": colors.shortcutBackground, "--moon-shortcut-text": colors.shortcutText,
       "--moon-user-accent": colors.accent, "--moon-user-accent-soft": `${colors.accent}32`,
       "--moon-bg": colors.background, "--moon-surface": colors.surface, "--moon-surface-raised": colors.elevated,
       "--moon-text": colors.text, "--moon-text-muted": colors.textMuted, "--moon-border": colors.border,

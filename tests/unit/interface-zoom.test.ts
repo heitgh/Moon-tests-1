@@ -1,0 +1,43 @@
+import { describe, expect, it, vi } from "vitest";
+import type { Input, WebContents } from "electron";
+import { installZoomShortcuts, nextZoom, zoomAction } from "../../apps/desktop/electron/main/interface-zoom.js";
+import { createDefaultCustomization, validateCustomization } from "../../ui/customization/customization-schema.js";
+
+const input = (key: string, code = "Equal"): Input => ({ type: "keyDown", key, code, control: true, meta: false, alt: false, shift: false, isAutoRepeat: false, isComposing: false, location: 0, modifiers: [] });
+describe("interface zoom recovery", () => {
+  it("accepts plus with/without shift and numpad, minus and reset", () => {
+    for (const key of ["+", "="]) expect(zoomAction(input(key))).toBe("in");
+    expect(zoomAction(input("Add", "NumpadAdd"))).toBe("in");
+    expect(zoomAction(input("-", "Minus"))).toBe("out");
+    expect(zoomAction(input("0", "Digit0"))).toBe("reset");
+    expect(zoomAction({ ...input("="), control: false })).toBeUndefined();
+    expect(zoomAction({ ...input("="), type: "keyUp" })).toBeUndefined();
+  });
+  it("can increase again from the minimum and reset any previous zoom", () => {
+    expect(nextZoom(.5, "in")).toBe(.6);
+    expect(nextZoom(.5, "out")).toBe(.5);
+    expect(nextZoom(2, "in")).toBe(2);
+    expect(nextZoom(.3, "reset")).toBe(1);
+    expect(nextZoom(nextZoom(1, "out"), "in")).toBe(1);
+  });
+  it("routes keys from a web page to the shell and prevents native zoom", () => {
+    let listener: (event: { preventDefault(): void }, input: Input) => void = () => {};
+    const source = { on: vi.fn((_name, handler) => { listener = handler; }) };
+    const shell = { isDestroyed: () => false, getZoomFactor: () => .5, setZoomFactor: vi.fn() };
+    installZoomShortcuts(source as unknown as WebContents, shell as unknown as WebContents);
+    const event = { preventDefault: vi.fn() };
+    listener(event, input("+"));
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(shell.setZoomFactor).toHaveBeenCalledWith(.6);
+  });
+  it("migrates older themes while retaining independent colors on reload", () => {
+    const document = createDefaultCustomization();
+    const colors = document.global.appearance.colors as unknown as Record<string, string>;
+    for (const key of ["tabBar", "activeTab", "toolbar", "shortcutBackground", "shortcutText"]) delete colors[key];
+    const migrated = validateCustomization(document);
+    expect(migrated.global.appearance.colors.tabBar).toBe(colors.surface);
+    const changed = structuredClone(migrated);
+    (changed.global.appearance.colors as { tabBar: string }).tabBar = "#123456";
+    expect(validateCustomization(JSON.parse(JSON.stringify(changed))).global.appearance.colors.tabBar).toBe("#123456");
+  });
+});
