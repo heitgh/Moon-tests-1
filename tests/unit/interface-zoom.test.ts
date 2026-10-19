@@ -41,3 +41,16 @@ describe("interface zoom recovery", () => {
     expect(validateCustomization(JSON.parse(JSON.stringify(changed))).global.appearance.colors.tabBar).toBe("#123456");
   });
 });
+
+it("converts renderer CSS bounds at interface zoom before positioning native pages", async () => {
+  const { registerBrowserIpc } = await import("../../apps/desktop/electron/ipc/browser-ipc.js");
+  const handlers = new Map<string, (event: unknown, payload: unknown) => void>();
+  const setBounds = vi.fn();
+  registerBrowserIpc(
+    { register: (name: string, handler: (event: unknown, payload: unknown) => void) => handlers.set(name, handler) } as unknown as Parameters<typeof registerBrowserIpc>[0],
+    { setBounds } as unknown as Parameters<typeof registerBrowserIpc>[1],
+    { idForWebContents: () => "window-1" } as unknown as Parameters<typeof registerBrowserIpc>[2]
+  );
+  handlers.get("browser:set-bounds")!({ sender: { getZoomFactor: () => 1.5 } }, { x: 60, y: 100, width: 800, height: 400 });
+  expect(setBounds).toHaveBeenCalledWith("window-1", { x: 90, y: 150, width: 1200, height: 600 });
+});

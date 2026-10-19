@@ -223,3 +223,7 @@ body { background: var(--moon-bg); color: var(--moon-text); font-family: var(--m
 .moon-toolbar-v2 { background: color-mix(in srgb, var(--moon-toolbar-background, var(--moon-bg)) calc(var(--moon-toolbar-opacity) * 100%), transparent); }
 .moon-shortcut-mark { background: var(--moon-shortcut-background, var(--moon-surface)); color: var(--moon-shortcut-text, var(--moon-text)); border-color: var(--moon-border); }
 .moon-shortcut-label { color: var(--moon-shortcut-text, var(--moon-text)); }
+
+.moon-preview-tabs { background: var(--moon-tab-bar, var(--moon-surface)); }
+.moon-preview-tabs span.is-active { background: var(--moon-active-tab, var(--moon-bg)); }
+.moon-preview-toolbar { background: var(--moon-toolbar-background, var(--moon-bg)); }

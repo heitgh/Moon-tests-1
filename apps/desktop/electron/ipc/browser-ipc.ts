@@ -59,7 +59,9 @@ export function registerBrowserIpc(
     if (!payload || ![payload.x, payload.y, payload.width, payload.height].every(Number.isFinite)) {
       throw new TypeError("Invalid browser bounds");
     }
-    browser.setBounds(windowIdFor(event), payload);
+    // Renderer rectangles use CSS pixels; WebContentsView expects device-independent pixels.
+    const zoom = event.sender.getZoomFactor();
+    browser.setBounds(windowIdFor(event), { x: Math.round(payload.x * zoom), y: Math.round(payload.y * zoom), width: Math.round(payload.width * zoom), height: Math.round(payload.height * zoom) });
   });
   router.register("browser:set-content-visible", (event, payload?: { readonly visible?: boolean }) => {
     if (!payload || typeof payload.visible !== "boolean") {

@@ -17,7 +17,7 @@ O instalador NSIS instala por usuário, sem elevação; há também um executáv
 
 ## Validação e limitações
 
-TypeScript, lint, 56 testes unitários e 17 testes de integração passaram. Foram adicionadas regressões para aumento após redução, teclas de layouts diferentes, redirecionamento da página para a interface e migração de cores.
+TypeScript, lint, 57 testes unitários e 17 testes de integração passaram. Foram adicionadas regressões para aumento após redução, teclas de layouts diferentes, redirecionamento da página para a interface migração de cores e posicionamento das páginas após zoom.
 
 REA 6.7.0 foi instalado separadamente e executado contra uma cópia estável do código. A análise foi bloqueada pelo ambiente: o `ps` disponível falha com `fatal library error, lookup self`, impedindo a verificação de propriedade dos processos exigida pelo REA. Nenhuma análise nativa do Vivaldi foi concluída.
 
