@@ -24,3 +24,7 @@ REA 6.7.0 foi instalado separadamente e executado contra uma cópia estável do 
 Este ambiente é Linux e não tem acesso ao atalho `C:\Users\aluno\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Vivaldi.lnk`. As mudanças são do Moon em `heitgh/Moon-tests-1`. Não modificam o Vivaldi nem seu repositório original. Não há validação visual ou execução manual do binário Windows nesta sessão.
 
 O workflow **Windows download** gera NSIS e portátil e publica um pré-lançamento neste repositório apenas após os checks e o empacotamento concluírem. A existência do workflow não significa que o download já foi produzido; conferir seu resultado em Actions/Releases.
+
+## Dependências
+
+Electron atualizado para 43.8.0, Vitest para 5.0.5 e dependências transitivas compatíveis atualizadas no lockfile. Os 57 testes unitários e 17 de integração passaram com o novo Vitest. `npm audit --audit-level=high` passou; restam oito alertas moderados transitivos do empacotador. Os testes Electron de armazenamento e ponta a ponta passaram no primeiro build da CI; a nova execução da CI valida novamente o conjunto atualizado.

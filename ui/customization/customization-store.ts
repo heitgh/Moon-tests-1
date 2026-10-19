@@ -252,10 +252,10 @@ export class CustomizationStore {
       const appearance = config.appearance as Mutable<typeof config.appearance>;
       if (tokens.colors) {
         const colors = appearance.colors as Mutable<typeof appearance.colors>;
-        if (tokens.colors.background) colors.background = tokens.colors.background;
-        if (tokens.colors.surface) colors.surface = tokens.colors.surface;
+        if (tokens.colors.background) colors.background = colors.activeTab = colors.toolbar = tokens.colors.background;
+        if (tokens.colors.surface) colors.surface = colors.tabBar = colors.shortcutBackground = tokens.colors.surface;
         if (tokens.colors.surfaceElevated) colors.elevated = tokens.colors.surfaceElevated;
-        if (tokens.colors.text) colors.text = tokens.colors.text;
+        if (tokens.colors.text) colors.text = colors.shortcutText = tokens.colors.text;
         if (tokens.colors.textMuted) colors.textMuted = tokens.colors.textMuted;
         if (tokens.colors.accent) colors.accent = tokens.colors.accent;
         if (tokens.colors.border) colors.border = tokens.colors.border;
