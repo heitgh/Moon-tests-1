@@ -219,6 +219,10 @@ test("page keyboard zoom is separate from Ctrl wheel UI zoom and the titlebar is
     const shell = await shellWindow(application);
     await expect(shell.getByLabel("Minimizar janela", { exact: true })).toBeVisible();
     await expect(shell.locator("html")).toHaveAttribute("data-moon-wallpaper-chrome", "on");
+    await shell.evaluate(async () => {
+      const background = getComputedStyle(document.querySelector(".moon-browser-shell")!, "::before").backgroundImage;
+      const image = new Image(); image.src = JSON.parse(background.slice(4, -1)) as string; await image.decode();
+    });
     await shell.screenshot({ path: "test-results/continuous-wallpaper-initial.png" });
     await shell.evaluate(async target => { await (window as unknown as { moonBrowser: { createTab(url: string): Promise<unknown> } }).moonBrowser.createTab(target); }, url);
     const factors = () => application.evaluate(({ BrowserWindow, webContents }, target) => ({ shell: BrowserWindow.getAllWindows()[0]!.webContents.getZoomFactor(), page: webContents.getAllWebContents().find(contents => contents.getURL() === target)?.getZoomFactor() }), url);

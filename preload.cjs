@@ -1,3 +1,4 @@
+/* global window */
 const { contextBridge, ipcRenderer } = require("electron");
 
 const invoke = (channel, payload) => ipcRenderer.invoke(channel, payload);
@@ -60,3 +61,11 @@ contextBridge.exposeInMainWorld("moonBrowser", Object.freeze({
   onAdblockStatus: listener => subscribe("adblock:status", listener),
   onPermissionRequested: listener => subscribe("browser:permission-requested", listener)
 }));
+
+// Nexus Inc. — reserve trusted Ctrl + wheel for interface zoom.
+window.addEventListener("wheel", event => {
+  if (!event.isTrusted || !event.ctrlKey || event.deltaY === 0) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  ipcRenderer.send("browser:ui-wheel", event.deltaY < 0 ? "in" : "out");
+}, { capture: true, passive: false });

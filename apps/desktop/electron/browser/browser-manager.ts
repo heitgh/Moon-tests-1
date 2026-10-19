@@ -12,7 +12,8 @@ import { ElectronBrowserSurface } from "./browser-surface.js";
 import { NavigationController } from "./navigation-controller.js";
 import type { ElectronAdblockService } from "../services/adblock-service.js";
 import type { ElectronDownloadManager } from "../services/download-manager.js";
-import type { Session } from "electron";
+import { app, type Session, type WebContents } from "electron";
+import { join } from "node:path";
 import { openElectronContextMenu } from "./context-menu.js";
 import { isMoonSettingsUrl, MoonInternalHistory, normalizeMoonInternalUrl } from "../../../../packages/navigation/internal-routes.js";
 
@@ -62,6 +63,13 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     return () => this.#tabUpdateListeners.delete(listener);
   }
 
+  windowIdForContents(contents: WebContents): string | undefined {
+    const id = this.windows.idForWebContents(contents);
+    if (id) return id;
+    for (const [tabId, surface] of this.#surfaces) if (surface.view.webContents === contents) return this.#tabWindows.get(tabId);
+    return undefined;
+  }
+
   zoomActivePage(windowId: string, action: ZoomAction): void {
     const id = this.#activeTabs.get(windowId);
     if (!id || this.#homeTabs.has(id)) return;
@@ -91,6 +99,7 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        preload: join(app.getAppPath(), "zoom-preload.cjs"),
         partition: options.private
           ? `private:${sessionId}`
           : options.workspaceId

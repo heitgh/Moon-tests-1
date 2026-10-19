@@ -1,5 +1,5 @@
-import { installInterfaceWheel, installZoomShortcuts } from "./interface-zoom.js";
-import { app } from "electron";
+import { changeInterfaceZoom, installInterfaceWheel, installZoomShortcuts } from "./interface-zoom.js";
+import { app, ipcMain } from "electron";
 import { join } from "node:path";
 import { ElectronBrowserManager } from "../browser/browser-manager.js";
 import { registerBrowserIpc } from "../ipc/browser-ipc.js";
@@ -57,6 +57,12 @@ app.whenReady().then(async () => {
   application = new BrowserApplicationService(browser, profile);
   installApplicationMenu((window, action) => { const id = windows.idForWebContents(window.webContents); if (id) browser.zoomActivePage(id, action); });
 
+  ipcMain.on("browser:ui-wheel", (event, direction: unknown) => {
+    if (direction !== "in" && direction !== "out") return;
+    const id = browser.windowIdForContents(event.sender);
+    const window = id ? windows.get(id) : undefined;
+    if (window) setImmediate(() => changeInterfaceZoom(window.webContents, direction));
+  });
   registerBrowserIpc(ipc, application, windows);
   registerProductIpc(ipc, downloads, adblock, profile, themes);
   registerApplicationLifecycle(windows, createMainWindow);

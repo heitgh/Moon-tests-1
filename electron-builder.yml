@@ -10,6 +10,7 @@ files:
   - index.html
   - main.js
   - preload.cjs
+  - zoom-preload.cjs
   - package.json
 asar: true
 asarUnpack:
