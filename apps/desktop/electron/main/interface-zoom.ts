@@ -31,5 +31,9 @@ export function installZoomShortcuts(source: WebContents, onZoom: (action: ZoomA
 
 export function installInterfaceWheel(source: WebContents, shell: WebContents): void {
   // Electron reports Ctrl + wheel here, including gestures over site iframes.
-  source.on("zoom-changed", (_event, direction) => changeInterfaceZoom(shell, direction));
+  source.on("zoom-changed", (event, direction) => {
+    event.preventDefault();
+    // Finish native wheel dispatch before resizing a different WebContents.
+    setImmediate(() => changeInterfaceZoom(shell, direction));
+  });
 }

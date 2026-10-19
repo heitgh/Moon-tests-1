@@ -55,12 +55,12 @@ it("converts renderer CSS bounds at interface zoom before positioning native pag
   expect(setBounds).toHaveBeenCalledWith("window-1", { x: 90, y: 150, width: 1200, height: 600 });
 });
 
-it("routes native Ctrl wheel gestures to the shell independently of page zoom", () => {
+it("routes native Ctrl wheel gestures to the shell independently of page zoom", async () => {
   let listener: (event: unknown, direction: "in" | "out") => void = () => {};
   const source = { on: vi.fn((_name, handler) => { listener = handler; }) };
   const shell = { isDestroyed: () => false, getZoomFactor: () => 1, setZoomFactor: vi.fn() };
   installInterfaceWheel(source as unknown as WebContents, shell as unknown as WebContents);
   expect(source.on).toHaveBeenCalledWith("zoom-changed", expect.any(Function));
-  listener({}, "in"); expect(shell.setZoomFactor).toHaveBeenLastCalledWith(1.1);
-  listener({}, "out"); expect(shell.setZoomFactor).toHaveBeenLastCalledWith(.9);
+  listener({ preventDefault: vi.fn() }, "in"); await new Promise(resolve => setImmediate(resolve)); expect(shell.setZoomFactor).toHaveBeenLastCalledWith(1.1);
+  listener({ preventDefault: vi.fn() }, "out"); await new Promise(resolve => setImmediate(resolve)); expect(shell.setZoomFactor).toHaveBeenLastCalledWith(.9);
 });

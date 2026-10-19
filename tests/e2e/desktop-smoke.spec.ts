@@ -214,17 +214,25 @@ test("page keyboard zoom is separate from Ctrl wheel UI zoom and the titlebar is
   const userData = await mkdtemp(join(tmpdir(), "moon-e2e-zoom-"));
   const application = await electron.launch({ args: [...platformArguments, `--user-data-dir=${userData}`, "."], cwd: process.cwd(), env: { ...desktopEnv, NODE_ENV: "test", MOON_TEST_PROFILE_DIR: userData } });
   try {
+    application.process().on("exit", (code, signal) => console.log("Electron zoom test exit", code, signal));
+    application.process().stderr?.on("data", chunk => console.log("Electron zoom test stderr", String(chunk)));
     const shell = await shellWindow(application);
     await expect(shell.getByLabel("Minimizar janela", { exact: true })).toBeVisible();
     await expect(shell.locator("html")).toHaveAttribute("data-moon-wallpaper-chrome", "on");
+    await shell.screenshot({ path: "test-results/continuous-wallpaper-initial.png" });
     await shell.evaluate(async target => { await (window as unknown as { moonBrowser: { createTab(url: string): Promise<unknown> } }).moonBrowser.createTab(target); }, url);
     const factors = () => application.evaluate(({ BrowserWindow, webContents }, target) => ({ shell: BrowserWindow.getAllWindows()[0]!.webContents.getZoomFactor(), page: webContents.getAllWebContents().find(contents => contents.getURL() === target)?.getZoomFactor() }), url);
     await expect.poll(async () => (await factors()).page).toBe(1);
     await application.evaluate(({ webContents }, target) => { const page = webContents.getAllWebContents().find(contents => contents.getURL() === target)!; page.sendInputEvent({ type: "keyDown", keyCode: "=", modifiers: ["control"] }); page.sendInputEvent({ type: "keyUp", keyCode: "=", modifiers: ["control"] }); }, url);
     await expect.poll(async () => Math.round(((await factors()).page ?? 0) * 100) / 100).toBe(1.1);
     expect((await factors()).shell).toBe(1);
-    await application.evaluate(({ webContents }, target) => { const page = webContents.getAllWebContents().find(contents => contents.getURL() === target)!; page.sendInputEvent({ type: "mouseWheel", x: 30, y: 30, deltaY: 120, deltaX: 0, modifiers: ["control"], canScroll: true }); }, url);
-    await expect.poll(async () => (await factors()).shell).not.toBe(1);
+    const guest = application.context().pages().find(page => page.url() === url)!;
+    expect(guest).toBeDefined();
+    await guest.keyboard.down("Control");
+    await guest.mouse.move(40, 60);
+    await guest.mouse.wheel(0, -120);
+    await guest.keyboard.up("Control");
+    await expect.poll(() => shell.evaluate(() => window.devicePixelRatio)).not.toBe(1);
     expect(Math.round(((await factors()).page ?? 0) * 100) / 100).toBe(1.1);
     await shell.getByLabel("Página inicial", { exact: true }).click();
     await expect(shell.locator(".moon-home")).toBeVisible();
