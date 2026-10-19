@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Input, WebContents } from "electron";
-import { installZoomShortcuts, nextZoom, zoomAction } from "../../apps/desktop/electron/main/interface-zoom.js";
+import { changeInterfaceZoom, installInterfaceWheel, installZoomShortcuts, nextZoom, zoomAction } from "../../apps/desktop/electron/main/interface-zoom.js";
 import { createDefaultCustomization, validateCustomization } from "../../ui/customization/customization-schema.js";
 
 const input = (key: string, code = "Equal"): Input => ({ type: "keyDown", key, code, control: true, meta: false, alt: false, shift: false, isAutoRepeat: false, isComposing: false, location: 0, modifiers: [] });
@@ -20,11 +20,11 @@ describe("interface zoom recovery", () => {
     expect(nextZoom(.3, "reset")).toBe(1);
     expect(nextZoom(nextZoom(1, "out"), "in")).toBe(1);
   });
-  it("routes keys from a web page to the shell and prevents native zoom", () => {
+  it("routes keyboard zoom to the supplied page without changing the shell", () => {
     let listener: (event: { preventDefault(): void }, input: Input) => void = () => {};
     const source = { on: vi.fn((_name, handler) => { listener = handler; }) };
     const shell = { isDestroyed: () => false, getZoomFactor: () => .5, setZoomFactor: vi.fn() };
-    installZoomShortcuts(source as unknown as WebContents, shell as unknown as WebContents);
+    installZoomShortcuts(source as unknown as WebContents, action => changeInterfaceZoom(shell as unknown as WebContents, action));
     const event = { preventDefault: vi.fn() };
     listener(event, input("+"));
     expect(event.preventDefault).toHaveBeenCalledOnce();
@@ -53,4 +53,14 @@ it("converts renderer CSS bounds at interface zoom before positioning native pag
   );
   handlers.get("browser:set-bounds")!({ sender: { getZoomFactor: () => 1.5 } }, { x: 60, y: 100, width: 800, height: 400 });
   expect(setBounds).toHaveBeenCalledWith("window-1", { x: 90, y: 150, width: 1200, height: 600 });
+});
+
+it("routes native Ctrl wheel gestures to the shell independently of page zoom", () => {
+  let listener: (event: unknown, direction: "in" | "out") => void = () => {};
+  const source = { on: vi.fn((_name, handler) => { listener = handler; }) };
+  const shell = { isDestroyed: () => false, getZoomFactor: () => 1, setZoomFactor: vi.fn() };
+  installInterfaceWheel(source as unknown as WebContents, shell as unknown as WebContents);
+  expect(source.on).toHaveBeenCalledWith("zoom-changed", expect.any(Function));
+  listener({}, "in"); expect(shell.setZoomFactor).toHaveBeenLastCalledWith(1.1);
+  listener({}, "out"); expect(shell.setZoomFactor).toHaveBeenLastCalledWith(.9);
 });

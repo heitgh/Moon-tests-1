@@ -157,6 +157,12 @@ class BrowserShell {
 
     const main = el("section", "moon-browser-main"); const tabsBar = el("header", "moon-tabs-bar"); const mark = el("div", "moon-window-mark"); mark.append(svg("moon"), el("span", "", "MOON"));
     const addTab = btn("moon-add-tab", "Nova aba (Ctrl+T)", "plus"); addTab.addEventListener("click", () => void this.#createTab()); tabsBar.append(mark, this.#tabStrip.element, addTab);
+    const windowControls = el("div", "moon-window-controls");
+    for (const [action, label, glyph] of [["minimize", "Minimizar janela", "−"], ["maximize", "Maximizar ou restaurar janela", "□"], ["close", "Fechar janela", "×"]] as const) {
+      const control = document.createElement("button"); control.className = `moon-window-control moon-window-${action}`; control.textContent = glyph; control.title = label; control.setAttribute("aria-label", label);
+      control.addEventListener("click", () => void this.#bridge?.windowAction?.(action)); windowControls.append(control);
+    }
+    tabsBar.append(windowControls);
 
     const content = el("div", "moon-content"); this.#renderHomeShortcuts(); this.#stage.append(this.#home, this.#viewport, this.#status); content.append(this.#stage);
     main.append(tabsBar, this.#toolbar.element, this.#workspaceBar.element, content); shell.append(rail, this.#drawer, main); this.container.replaceChildren(shell);

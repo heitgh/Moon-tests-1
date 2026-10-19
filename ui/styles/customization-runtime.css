@@ -227,3 +227,20 @@ body { background: var(--moon-bg); color: var(--moon-text); font-family: var(--m
 .moon-preview-tabs { background: var(--moon-tab-bar, var(--moon-surface)); }
 .moon-preview-tabs span.is-active { background: var(--moon-active-tab, var(--moon-bg)); }
 .moon-preview-toolbar { background: var(--moon-toolbar-background, var(--moon-bg)); }
+
+/* Nexus Inc. — one wallpaper across the home and browser chrome. */
+.moon-tabs-bar { -webkit-app-region: drag; }
+.moon-tabs-bar button, .moon-window-controls { -webkit-app-region: no-drag; }
+.moon-window-controls { align-self: stretch; display: flex; flex: 0 0 auto; margin-left: auto; }
+.moon-window-control { background: transparent; border: 0; color: var(--moon-text); cursor: pointer; font: 18px system-ui; min-width: 42px; }
+.moon-window-control:hover { background: color-mix(in srgb, var(--moon-text) 15%, transparent); }
+.moon-window-close:hover { background: #c42b1c; color: white; }
+[data-moon-wallpaper-chrome="on"] .moon-browser-shell { isolation: isolate; position: relative; background: var(--moon-chrome-wallpaper-color); }
+[data-moon-wallpaper-chrome="on"] .moon-browser-shell::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: var(--moon-chrome-wallpaper); background-size: var(--moon-chrome-wallpaper-fit); background-position: var(--moon-chrome-wallpaper-position); background-repeat: var(--moon-chrome-wallpaper-repeat); opacity: var(--moon-wallpaper-opacity); filter: blur(var(--moon-wallpaper-blur)) brightness(var(--moon-wallpaper-brightness)) contrast(var(--moon-wallpaper-contrast)) saturate(var(--moon-wallpaper-saturation)) hue-rotate(var(--moon-wallpaper-hue)); }
+[data-moon-wallpaper-chrome="on"] .moon-browser-main, [data-moon-wallpaper-chrome="on"] .moon-content, [data-moon-wallpaper-chrome="on"] .moon-stage, [data-moon-wallpaper-chrome="on"] .moon-home { background: transparent; }
+[data-moon-wallpaper-chrome="on"] .moon-home-wallpaper { display: none; }
+[data-moon-wallpaper-chrome="on"] .moon-tabs-bar { background: transparent; }
+[data-moon-wallpaper-chrome="on"] .moon-toolbar-v2 { background: color-mix(in srgb, var(--moon-toolbar-background) 65%, transparent); }
+[data-moon-wallpaper-chrome="on"] .moon-workspaces { background: color-mix(in srgb, var(--moon-bg) 65%, transparent); }
+[data-moon-wallpaper-chrome="on"] .moon-tab { background: color-mix(in srgb, var(--moon-tab-bar) 55%, transparent); }
+[data-moon-wallpaper-chrome="on"] .moon-tab.is-active { background: color-mix(in srgb, var(--moon-active-tab) 85%, transparent); }

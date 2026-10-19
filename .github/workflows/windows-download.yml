@@ -44,4 +44,4 @@ jobs:
         run: |
           $tag = "moon-test-$env:GITHUB_RUN_NUMBER"
           $files = Get-ChildItem release/*.exe | ForEach-Object { $_.FullName }
-          gh release create $tag @files --target $env:GITHUB_SHA --prerelease --title "Moon Browser - teste $env:GITHUB_RUN_NUMBER" --notes "Zoom da interface recuperável: Ctrl +, Ctrl - e Ctrl 0. Cores independentes de guias, navegação e atalhos. Instalador por usuário e versão portátil. Build automatizado; validação manual no Windows ainda necessária."
+          gh release create $tag @files --target $env:GITHUB_SHA --prerelease --title "Moon Browser - teste $env:GITHUB_RUN_NUMBER" --notes "Ctrl + e Ctrl - ampliam os sites; Ctrl + scroll ajusta a interface. Barra de título integrada e wallpaper contínuo até as guias. Instalador por usuário e versão portátil. Build automatizado; validação manual no Windows ainda necessária."

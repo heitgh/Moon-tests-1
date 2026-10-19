@@ -35,6 +35,7 @@ export interface MoonThemePreview extends MoonThemeSummary { readonly intentId: 
 export type Drawer = "workspaces" | "bookmarks" | "downloads" | "history" | "translate" | "notes" | "extensions" | "ai" | "security";
 
 export interface MoonBrowserBridge {
+  windowAction?(action: "minimize" | "maximize" | "close"): Promise<void>;
   createTab(url?: string, workspaceId?: string): Promise<Tab>;
   getTabs(): Promise<readonly Tab[]>;
   closeTab(tabId: string): Promise<void>;

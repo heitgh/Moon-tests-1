@@ -1,30 +1,13 @@
-# Moon Browser — interface recuperável
+# Moon Browser — zoom e wallpaper (0.1.2)
 
 Nexus Inc. · 19/10/2026
 
-## Uso
+- Ctrl++ ou Ctrl+= aumenta o **site ativo**; Ctrl+- diminui; Ctrl+0 restaura o site para 100%. Teclado numérico também funciona. Na Home interna esses comandos não redimensionam a UI.
+- Ctrl + roda do mouse para cima aumenta a **UI**; para baixo diminui. O gesto nativo do Electron é tratado na janela e nas páginas sem alterar o zoom do site. O menu Visualizar também ajusta o site ativo.
+- A barra de título nativa foi removida. Os controles de janela ficam nas guias. Arraste a região livre da linha das guias para mover a janela; os botões continuam interativos.
+- Wallpaper contínuo até as guias, ativado por padrão inclusive em configurações antigas. Pode ser desativado em Aparência → Wallpaper. Mantém os filtros, posicionamento, fontes local/HTTPS validado, cor e gradiente.
+- Configurações por workspace, preview/cancelamento e cores independentes permanecem disponíveis.
 
-- `Ctrl+-`: diminuir a interface.
-- `Ctrl++` ou `Ctrl+=`: aumentar (também no teclado numérico).
-- `Ctrl+0`: restaurar 100%. No macOS, usar Command.
-- O menu **Visualizar** também permite aumentar, diminuir e restaurar.
-- A escala nativa fica entre 50% e 200%. O zoom das páginas não é alterado por esses comandos.
-- Em **Personalização → Essencial → Aparência rápida**, ajustar barra de guias, guia ativa, barra de navegação, fundo e texto dos atalhos. Confirmar em **Aplicar mudanças**. Os controles também aparecem no editor avançado; temas antigos recebem valores compatíveis.
+Validação local: TypeScript, lint, 58 testes unitários, 18 testes de integração e compilação passaram. A CI executa os testes Electron e o novo teste de regressão com página HTTP local para separar zoom do site e da interface.
 
-## Windows e permissões
-
-O instalador NSIS instala por usuário, sem elevação; há também um executável portátil. Não remove políticas da escola ou bloqueios de aplicações definidos pela organização. Não foi fornecida mensagem específica para os problemas de administração, portanto outras causas permanecem sem diagnóstico.
-
-## Validação e limitações
-
-TypeScript, lint, 57 testes unitários e 17 testes de integração passaram. Foram adicionadas regressões para aumento após redução, teclas de layouts diferentes, redirecionamento da página para a interface migração de cores e posicionamento das páginas após zoom.
-
-REA 6.7.0 foi instalado separadamente e executado contra uma cópia estável do código. A análise foi bloqueada pelo ambiente: o `ps` disponível falha com `fatal library error, lookup self`, impedindo a verificação de propriedade dos processos exigida pelo REA. Nenhuma análise nativa do Vivaldi foi concluída.
-
-Este ambiente é Linux e não tem acesso ao atalho `C:\Users\aluno\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Vivaldi.lnk`. As mudanças são do Moon em `heitgh/Moon-tests-1`. Não modificam o Vivaldi nem seu repositório original. Não há validação visual ou execução manual do binário Windows nesta sessão.
-
-O workflow **Windows download** gera NSIS e portátil e publica um pré-lançamento neste repositório apenas após os checks e o empacotamento concluírem. A existência do workflow não significa que o download já foi produzido; conferir seu resultado em Actions/Releases.
-
-## Dependências
-
-Electron atualizado para 43.8.0, Vitest para 5.0.5 e dependências transitivas compatíveis atualizadas no lockfile. Os 57 testes unitários e 17 de integração passaram com o novo Vitest. `npm audit --audit-level=high` passou; restam oito alertas moderados transitivos do empacotador. Os testes Electron de armazenamento e ponta a ponta passaram no primeiro build da CI; a nova execução da CI valida novamente o conjunto atualizado.
+A instalação do Windows permanece por usuário e há versão portátil. A sessão de desenvolvimento é Linux; o navegador instalado no Windows do usuário não foi controlado.

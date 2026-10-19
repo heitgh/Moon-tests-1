@@ -9,6 +9,7 @@ const subscribe = (channel, listener) => {
 };
 
 contextBridge.exposeInMainWorld("moonBrowser", Object.freeze({
+  windowAction: action => invoke("browser:window-action", action),
   createTab: (url, workspaceId) => invoke("browser:create-tab", {
     ...(url ? { url } : {}),
     ...(workspaceId ? { workspaceId } : {})

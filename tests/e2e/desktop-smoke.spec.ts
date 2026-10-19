@@ -204,3 +204,30 @@ test("keeps the Phase A chrome readable, reachable and unclipped across target v
     await rm(userData, { recursive: true, force: true });
   }
 });
+
+test("page keyboard zoom is separate from Ctrl wheel UI zoom and the titlebar is integrated", async () => {
+  const { createServer } = await import("node:http");
+  const server = createServer((_request, response) => response.end("<!doctype html><h1>Zoom regression</h1>"));
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as { port: number }).port;
+  const url = `http://127.0.0.1:${port}/`;
+  const userData = await mkdtemp(join(tmpdir(), "moon-e2e-zoom-"));
+  const application = await electron.launch({ args: [...platformArguments, `--user-data-dir=${userData}`, "."], cwd: process.cwd(), env: { ...desktopEnv, NODE_ENV: "test", MOON_TEST_PROFILE_DIR: userData } });
+  try {
+    const shell = await shellWindow(application);
+    await expect(shell.getByLabel("Minimizar janela", { exact: true })).toBeVisible();
+    await expect(shell.locator("html")).toHaveAttribute("data-moon-wallpaper-chrome", "on");
+    await shell.evaluate(async target => { await (window as unknown as { moonBrowser: { createTab(url: string): Promise<unknown> } }).moonBrowser.createTab(target); }, url);
+    const factors = () => application.evaluate(({ BrowserWindow, webContents }, target) => ({ shell: BrowserWindow.getAllWindows()[0]!.webContents.getZoomFactor(), page: webContents.getAllWebContents().find(contents => contents.getURL() === target)?.getZoomFactor() }), url);
+    await expect.poll(async () => (await factors()).page).toBe(1);
+    await application.evaluate(({ webContents }, target) => { const page = webContents.getAllWebContents().find(contents => contents.getURL() === target)!; page.sendInputEvent({ type: "keyDown", keyCode: "=", modifiers: ["control"] }); page.sendInputEvent({ type: "keyUp", keyCode: "=", modifiers: ["control"] }); }, url);
+    await expect.poll(async () => Math.round(((await factors()).page ?? 0) * 100) / 100).toBe(1.1);
+    expect((await factors()).shell).toBe(1);
+    await application.evaluate(({ webContents }, target) => { const page = webContents.getAllWebContents().find(contents => contents.getURL() === target)!; page.sendInputEvent({ type: "mouseWheel", x: 30, y: 30, deltaY: 120, deltaX: 0, modifiers: ["control"], canScroll: true }); }, url);
+    await expect.poll(async () => (await factors()).shell).not.toBe(1);
+    expect(Math.round(((await factors()).page ?? 0) * 100) / 100).toBe(1.1);
+    await shell.getByLabel("Página inicial", { exact: true }).click();
+    await expect(shell.locator(".moon-home")).toBeVisible();
+    await shell.screenshot({ path: "test-results/continuous-wallpaper.png" });
+  } finally { await application.close(); server.close(); await rm(userData, { recursive: true, force: true }); }
+});

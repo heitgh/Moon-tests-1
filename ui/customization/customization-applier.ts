@@ -16,6 +16,14 @@ export class CustomizationApplier {
       background: mix(appearance.colors.background, "#ffffff", .9), surface: mix(appearance.colors.surface, "#ffffff", .92), elevated: mix(appearance.colors.elevated, "#ffffff", .86),
       text: mix(appearance.colors.text, "#000000", .88), textMuted: mix(appearance.colors.textMuted, "#000000", .62), border: mix(appearance.colors.border, "#000000", .14)
     } : appearance.colors;
+    this.root.dataset.moonWallpaperChrome = appearance.wallpaper.extendToChrome ? "on" : "off";
+    const wallpaper = appearance.wallpaper;
+    const source = wallpaper.type === "https" ? wallpaper.cachedData : wallpaper.source;
+    this.root.style.setProperty("--moon-chrome-wallpaper", wallpaper.type === "color" ? "none" : wallpaper.type === "gradient" ? wallpaper.source : source ? `url(${JSON.stringify(source)})` : "none");
+    this.root.style.setProperty("--moon-chrome-wallpaper-color", wallpaper.type === "color" ? wallpaper.source : colors.background);
+    this.root.style.setProperty("--moon-chrome-wallpaper-fit", wallpaper.fit);
+    this.root.style.setProperty("--moon-chrome-wallpaper-position", wallpaper.position);
+    this.root.style.setProperty("--moon-chrome-wallpaper-repeat", wallpaper.repeat ? "repeat" : "no-repeat");
     this.root.dataset.moonTheme = resolvedMode;
     this.root.dataset.moonThemeMode = appearance.mode;
     this.root.dataset.moonDensity = layout.density;

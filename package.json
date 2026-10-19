@@ -1,6 +1,6 @@
 {
   "name": "moon-browser",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Moon Browser — intelligent, contextual and productivity-focused web browser.",
   "desktopName": "moon-browser.desktop",
   "private": true,

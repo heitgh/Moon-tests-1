@@ -111,10 +111,10 @@ Artefatos são gravados em `release/`. Bancos, perfil, secrets, traces, relatór
 
 Consulte [`docs/architecture/security.md`](docs/architecture/security.md) para os invariantes de segurança.
 
-## Correção de escala e cores (0.1.1)
+## Navegação e aparência (0.1.2)
 
-Use **Ctrl++ / Ctrl+=**, **Ctrl+-** e **Ctrl+0** para aumentar, diminuir e restaurar a interface. As cores das guias, da navegação e dos atalhos agora possuem controles independentes no modo Essencial e no editor avançado.
+**Ctrl++ / Ctrl+=**, **Ctrl+-** e **Ctrl+0** ajustam o zoom do site ativo. **Ctrl + scroll** ajusta somente a interface. A barra de título separada foi removida; minimizar, maximizar/restaurar, fechar e arrastar ficam na linha das guias.
 
-[Downloads Windows de teste](https://github.com/heitgh/Moon-tests-1/releases) · [Andamento dos builds](https://github.com/heitgh/Moon-tests-1/actions/workflows/windows-download.yml) · [Validação e limitações](docs/interface-zoom-and-colors.md)
+O wallpaper pode preencher a Home e chegar até as guias, mantendo a imagem contínua. Ative ou desative em **Personalização → Aparência → Wallpaper → Estender wallpaper até as guias**. As cores de guias, navegação e atalhos continuam editáveis.
 
-O build Windows publica instalador por usuário e portátil após concluir os checks. Consulte o resultado do workflow antes de procurar o novo download.
+[Downloads Windows de teste](https://github.com/heitgh/Moon-tests-1/releases) · [Andamento dos builds](https://github.com/heitgh/Moon-tests-1/actions/workflows/windows-download.yml) · [Validação](docs/interface-zoom-and-colors.md)

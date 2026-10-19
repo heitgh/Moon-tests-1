@@ -1,4 +1,4 @@
-import { installZoomShortcuts } from "./interface-zoom.js";
+import { installInterfaceWheel, installZoomShortcuts } from "./interface-zoom.js";
 import { app } from "electron";
 import { join } from "node:path";
 import { ElectronBrowserManager } from "../browser/browser-manager.js";
@@ -34,7 +34,8 @@ async function createMainWindow(): Promise<void> {
     }
   });
   const window = windows.require(id);
-  installZoomShortcuts(window.webContents, window.webContents);
+  installZoomShortcuts(window.webContents, action => browser.zoomActivePage(id, action));
+  installInterfaceWheel(window.webContents, window.webContents);
 
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => {
@@ -54,7 +55,8 @@ app.whenReady().then(async () => {
   await profile.open();
   const themes = new MoonThemeService(profile, app.getVersion());
   application = new BrowserApplicationService(browser, profile);
-  installApplicationMenu();
+  installApplicationMenu((window, action) => { const id = windows.idForWebContents(window.webContents); if (id) browser.zoomActivePage(id, action); });
+
   registerBrowserIpc(ipc, application, windows);
   registerProductIpc(ipc, downloads, adblock, profile, themes);
   registerApplicationLifecycle(windows, createMainWindow);

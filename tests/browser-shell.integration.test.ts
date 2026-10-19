@@ -11,6 +11,7 @@ const adblockListeners: Array<(status: unknown) => void> = [];
 const tabUpdateListeners: Array<(update: unknown) => void> = [];
 const permissionListeners: Array<(request: { readonly id: string; readonly origin: string; readonly permission: string }) => void> = [];
 const bridge = {
+  windowAction: vi.fn(async () => undefined),
   createTab, getTabs: vi.fn(async () => []), closeTab: vi.fn(async () => undefined), activateTab: vi.fn(async () => undefined), showHome: vi.fn(async () => undefined), showInternalPage, navigate,
   back: vi.fn(async () => undefined), forward: vi.fn(async () => undefined), reload: vi.fn(async () => undefined), stop: vi.fn(async () => undefined), setBounds: vi.fn(async () => undefined), setContentVisible, respondToPermission: vi.fn(async () => undefined),
   getDownloads: vi.fn(async () => []), pauseDownload: vi.fn(async () => undefined), resumeDownload: vi.fn(async () => undefined), cancelDownload: vi.fn(async () => undefined), openDownload: vi.fn(async () => undefined), showDownloadInFolder: vi.fn(async () => undefined), clearFinishedDownloads: vi.fn(async () => undefined),
@@ -192,4 +193,17 @@ describe("Moon browser shell", () => {
     expect(document.querySelector('[role="alertdialog"]')).toBeNull();
     expect(setContentVisible).toHaveBeenLastCalledWith(true);
   });
+  it("keeps window controls in the tabs and can cancel wallpaper chrome changes", async () => {
+    (document.querySelector('[aria-label="Minimizar janela"]') as HTMLButtonElement).click();
+    expect(bridge.windowAction).toHaveBeenCalledWith("minimize");
+    expect(document.documentElement.dataset.moonWallpaperChrome).toBe("on");
+    (document.querySelector('[aria-label="Configurações"]') as HTMLButtonElement).click(); await flush();
+    (document.querySelector('[data-section="appearance"]') as HTMLButtonElement).click(); await flush();
+    const label = [...document.querySelectorAll("label")].find(node => node.textContent?.includes("Estender wallpaper até as guias"))!;
+    const toggle = label.querySelector("input")!; toggle.checked = false; toggle.dispatchEvent(new Event("change", { bubbles: true })); await flush();
+    expect(document.documentElement.dataset.moonWallpaperChrome).toBe("off");
+    (document.querySelector('[aria-label="Cancelar mudanças"]') as HTMLButtonElement).click(); await flush();
+    expect(document.documentElement.dataset.moonWallpaperChrome).toBe("on");
+  });
+
 });

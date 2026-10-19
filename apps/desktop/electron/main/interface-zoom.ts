@@ -20,11 +20,16 @@ export function changeInterfaceZoom(contents: WebContents, action: ZoomAction): 
   if (!contents.isDestroyed()) contents.setZoomFactor(nextZoom(contents.getZoomFactor(), action));
 }
 
-export function installZoomShortcuts(source: WebContents, shell: WebContents): void {
+export function installZoomShortcuts(source: WebContents, onZoom: (action: ZoomAction) => void): void {
   source.on("before-input-event", (event, input) => {
     const action = zoomAction(input);
     if (!action) return;
     event.preventDefault();
-    changeInterfaceZoom(shell, action);
+    onZoom(action);
   });
+}
+
+export function installInterfaceWheel(source: WebContents, shell: WebContents): void {
+  // Electron reports Ctrl + wheel here, including gestures over site iframes.
+  source.on("zoom-changed", (_event, direction) => changeInterfaceZoom(shell, direction));
 }

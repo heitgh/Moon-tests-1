@@ -26,6 +26,13 @@ export function registerBrowserIpc(
     return payload.tabId;
   };
 
+  router.register("browser:window-action", (event, payload: unknown) => {
+    const window = windows.require(windowIdFor(event));
+    if (payload === "minimize") window.minimize();
+    else if (payload === "maximize") { if (window.isMaximized()) window.unmaximize(); else window.maximize(); }
+    else if (payload === "close") window.close();
+    else throw new TypeError("Invalid window action");
+  });
   router.register("browser:create-tab", (event, payload?: CreateTabPayload) => {
     const url = payload?.url;
     const workspaceId = payload?.workspaceId;

@@ -1,4 +1,4 @@
-import { installZoomShortcuts } from "../main/interface-zoom.js";
+import { changeInterfaceZoom, installInterfaceWheel, installZoomShortcuts, type ZoomAction } from "../main/interface-zoom.js";
 import { randomUUID } from "node:crypto";
 import type {
   BrowserNavigationOptions,
@@ -60,6 +60,13 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
   onTabUpdated(listener: (windowId: string, update: BrowserTabUpdate) => void | Promise<void>): () => void {
     this.#tabUpdateListeners.add(listener);
     return () => this.#tabUpdateListeners.delete(listener);
+  }
+
+  zoomActivePage(windowId: string, action: ZoomAction): void {
+    const id = this.#activeTabs.get(windowId);
+    if (!id || this.#homeTabs.has(id)) return;
+    const contents = this.#surfaces.get(id)?.view.webContents;
+    if (contents) changeInterfaceZoom(contents, action);
   }
 
   async createWindow(options?: BrowserWindowOptions): Promise<string> {
@@ -323,7 +330,8 @@ export class ElectronBrowserManager implements ElectronBrowserBackend {
     surface: ElectronBrowserSurface
   ): void {
     const contents = surface.view.webContents;
-    installZoomShortcuts(contents, this.windows.require(windowId).webContents);
+    installZoomShortcuts(contents, action => changeInterfaceZoom(contents, action));
+    installInterfaceWheel(contents, this.windows.require(windowId).webContents);
 
     contents.setWindowOpenHandler(({ url }) => {
       const source = this.#requireTab(id);
